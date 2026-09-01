@@ -1,0 +1,24 @@
+{
+    "total_requests": 238,
+    "all_ips": [
+        [
+            "127.0.0.1",
+            174
+        ]
+    ],
+    "unique_ip": 1,
+    "successful_logins": 88,
+    "failed_logins": 82,
+    "kicked_users": 10,
+    "banned_users": 12,
+    "error_count": 0,
+    "error_rate": 0.0,
+    "warning": 110,
+    "top_5_IPs": [
+        [
+            "127.0.0.1",
+            174
+        ]
+    ],
+    "brute_force_alert": true
+}

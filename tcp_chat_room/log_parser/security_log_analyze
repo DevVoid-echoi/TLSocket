@@ -1,0 +1,22 @@
+{
+    "total_requests": 136,
+    "all_ips": [
+        [
+            "127.0.0.1",
+            90
+        ]
+    ],
+    "unique_ip": 1,
+    "successful_logins": 66,
+    "failed_logins": 20,
+    "kicked_users": 8,
+    "banned_users": 10,
+    "error_count": 0,
+    "error_rate": 0.0,
+    "top_5_IPs": [
+        [
+            "127.0.0.1",
+            90
+        ]
+    ]
+}
