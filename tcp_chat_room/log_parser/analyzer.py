@@ -4,6 +4,12 @@ from collections import defaultdict, Counter
 import json
 from models import LogRecord
 
+"""
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BRUTE_FORCE_DETECTION_DIR = os.path.join(BASE_DIR, "security", "brute_force_detection")
+
+from brute_force_detection import BruteForceDetector
+"""
 
 def analyze(records: Iterable[LogRecord]) -> dict:
     "Phân tích các bản ghi log và trả về thống kê"
@@ -14,6 +20,7 @@ def analyze(records: Iterable[LogRecord]) -> dict:
     successful_logins_count = 0
     banned_users_count = 0
     kicked_users_count = 0
+    suspicious_ips = defaultdict(int)
 
     ip_count = Counter()
 
@@ -40,7 +47,8 @@ def analyze(records: Iterable[LogRecord]) -> dict:
             kicked_users_count += 1
         if event == "BAN":
             banned_users_count += 1
-
+        if event in["RATE_LIMIT_EXCEEDED", "[ALERT] BRUTE_FORCE_ATTEMPT"]:
+            suspicious_ips[r.ip] += 1
         
         """
         latency_count[r.path] += 1
@@ -70,5 +78,6 @@ def analyze(records: Iterable[LogRecord]) -> dict:
         "error_count": error_count,
         "error_rate": error_rate,
         "warning": warning_count,
-        "top_5_IPs": ip_count.most_common(5)
+        "top_5_IPs": ip_count.most_common(5),
+        "suspicious_ips": dict(suspicious_ips)
     }

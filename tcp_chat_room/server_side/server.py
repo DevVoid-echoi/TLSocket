@@ -12,7 +12,8 @@ from client_management.lock import state_lock
 from client_management.ban_handler import get_banned_users, add_ban
 from client_management.actions import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions
 from auth.authentication import login, register, set_user_role
-from logs_management.record_logs import log_event
+from logs_management.record_logs import log_event, brute_force_detector
+from security.brute_force_detection import BruteForceDetector
 
 """Connect using IPv4 and TCP"""
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -34,6 +35,13 @@ def receive():
 
         # --- AUTHENTICATION ---
         while not session:
+            if brute_force_detector.is_ip_blocked(ip_addr):
+                remaining_time = brute_force_detector.get_remaining_ban_time(ip_addr)
+                print(f"[SECURITY] Refused connection from blocked IP: {ip_addr} ({remaining_time}s remaining)")
+                client.send(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode("utf-8"))
+                log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info=f"reason=BRUTE_FORCE_DETECTION remaining_sec={remaining_time}")
+                break
+
             line, buffer = read_line(client, buffer)
             if not line:
                 break
@@ -50,7 +58,6 @@ def receive():
                     elif success and not user_session:
                         client.send("ERR BANNED\n".encode('utf-8'))
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
-                        client.close()
                         continue
                     else:
                         client.send("ERR WRONG_AUTH\n".encode("utf-8")) # Decline due to wrong information
@@ -87,7 +94,7 @@ def receive():
         with state_lock:
             if nickname in nicknames:
                 client.send("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
-                log_event("LOGIN_FAILED", username=nickname, ip=ip_addr, extra_info="reason=ALREDY_LOGGED_IN")
+                log_event("LOGIN_FAILED", username=nickname, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
                 client.close()
                 continue
 

@@ -21,14 +21,20 @@ def parse_line(line: str) -> Optional[LogRecord]:
         return None
     date, time, level, rest = parts
 
+    remaining_start_index=1
+
     rest_parts = rest.split()
     event_type = rest_parts[0]
+    if event_type == "[ALERT]" and len(rest_parts) > 1:
+        event_type = "[ALERT] " + rest_parts[1]
+        remaining_start_index=2
+
 
     username = "N/A"
     ip = "N/A"
     extra_info_list = []
 
-    for kv in rest_parts[1:]:
+    for kv in rest_parts[remaining_start_index:]:
         if "=" in kv:
             key, value = kv.split("=", 1)
             if key == "username":

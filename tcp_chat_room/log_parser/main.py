@@ -44,6 +44,7 @@ def main() -> int:
     error_rate = results["error_rate"]
     warning = results["warning"]
     top_5_IPs = results["top_5_IPs"]
+    suspicious_ips = results["suspicious_ips"]
 
     print("\n" + "=" * 50)
     if os.path.exists(LOG_PATH):
@@ -91,6 +92,11 @@ def main() -> int:
         print(f"{ip}:{count}")
     print("=" * 50)
 
+    print("Suspicious IPs:")
+    for ip, count in suspicious_ips.items():
+        print(f"{ip}: {count}")
+    print("=" * 50)
+
     if warning > 0:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print("\033[91m" + "=" * 50)
@@ -116,7 +122,8 @@ def main() -> int:
             "error_rate": error_rate,
             "warning": warning,
             "top_5_IPs": top_5_IPs,
-            "brute_force_alert": warning > 0
+            "brute_force_alert": warning > 0,
+            "suspicious_IPs": suspicious_ips 
         }
 
         with open(args.output, "w", encoding="utf-8") as f:

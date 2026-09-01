@@ -1,0 +1,27 @@
+{
+    "total_requests": 344,
+    "all_ips": [
+        [
+            "127.0.0.1",
+            264
+        ]
+    ],
+    "unique_ip": 1,
+    "successful_logins": 102,
+    "failed_logins": 154,
+    "kicked_users": 12,
+    "banned_users": 12,
+    "error_count": 0,
+    "error_rate": 0.0,
+    "warning": 200,
+    "top_5_IPs": [
+        [
+            "127.0.0.1",
+            264
+        ]
+    ],
+    "brute_force_alert": true,
+    "suspicious_IPs": {
+        "127.0.0.1": 4
+    }
+}
