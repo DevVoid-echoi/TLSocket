@@ -7,7 +7,10 @@ PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PARENT_DIR not in sys.path:
     sys.path.append(PARENT_DIR)
 
-from config import HOST, PORT, SCRIPT_DIR, BAN_FILE_PATH
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BAN_FILE_PATH = os.path.join(BASE_DIR, "data", "ban.txt")
+
+from config import HOST, PORT
 from client_management.lock import state_lock
 from client_management.ban_handler import get_banned_users, add_ban
 from client_management.actions import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions

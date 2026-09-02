@@ -6,7 +6,8 @@ GRANDPARENT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspat
 if GRANDPARENT_DIR not in sys.path:
     sys.path.append(GRANDPARENT_DIR)
 
-from config import BAN_FILE_PATH
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BAN_FILE_PATH = os.path.join(BASE_DIR, "data", "ban.txt")
 
 def get_banned_users():
     """Read the ban file for banned users"""
