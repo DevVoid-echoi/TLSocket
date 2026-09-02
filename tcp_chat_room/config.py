@@ -1,6 +1,6 @@
 import os
 
-HOST = "127.0.0.1"  # local_host
+HOST = "0.0.0.0"  # local_host
 PORT = 9999
 
 MAX_LOGIN_ATTEMPTS = 5

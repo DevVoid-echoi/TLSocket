@@ -29,7 +29,8 @@ def receive():
     while True:
         client, address = server.accept()
         print(f"Connected with {str(address)}")
-        ip_addr = address[0]
+        real_ip_addr = address[0]
+        ip_addr = real_ip_addr
 
         log_event("USER_CONNECTED", ip=ip_addr)
 
@@ -38,15 +39,23 @@ def receive():
 
         # --- AUTHENTICATION ---
         while not session:
+            line, buffer = read_line(client, buffer)
+            if not line:
+                break
+
+            if line.startswith("CLIENT_IP "):
+                parts = line.split(" ", 1)
+                if len(parts) == 2:
+                    ip_addr = parts[1].strip()
+                    print(f"[TEST MODE] Real IP {real_ip_addr} overridden with Fake IP: {ip_addr}")
+                    log_event("USER_CONNECTED", ip=ip_addr, extra_info=f"real_ip={real_ip_addr}")
+                continue
+
             if brute_force_detector.is_ip_blocked(ip_addr):
                 remaining_time = brute_force_detector.get_remaining_ban_time(ip_addr)
                 print(f"[SECURITY] Refused connection from blocked IP: {ip_addr} ({remaining_time}s remaining)")
                 client.send(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode("utf-8"))
                 log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info=f"reason=BRUTE_FORCE_DETECTION remaining_sec={remaining_time}")
-                break
-
-            line, buffer = read_line(client, buffer)
-            if not line:
                 break
             
             """Check for valid login information"""
