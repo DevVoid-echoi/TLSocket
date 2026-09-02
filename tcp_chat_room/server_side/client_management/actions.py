@@ -2,6 +2,12 @@ from server_side.client_management.lock import state_lock
 from server_side.client_management.ban_handler import add_ban, remove_ban
 from auth.rbac import has_permission, Permission
 from server_side.logs_management.record_logs import log_event
+import os
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SECURITY_DIR = os.path.join(BASE_DIR, "security")
+
+from security.validation import validate_message, parse_and_validate_command
 
 clients = []
 nicknames = []
@@ -92,6 +98,10 @@ def handle_messages(client):
         if line is None:
             clean_up_client(client, "disconnected")
             break
+        
+        if len(line) > 2000:
+            client.send("ERR MESSAGE_TOO_LONG\n".encode("utf-8"))
+            continue
 
         session = user_sessions.get(client)
         if not session:
@@ -110,46 +120,61 @@ def handle_messages(client):
             break
 
         """Check if the user is admin and remove the target user"""
-        if line.startswith('KICK '):
-            if not has_permission(user_role, Permission.KICK):
-                client.send("MSG PERMISSION_DENIED: You do not have KICK permission.\n".encode("utf-8"))
-                log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=KICK_PERMISSION_DENIED")
+        if line.startswith("KICK ", "BAN ", "UNBAN "):
+            cmd, args, err = parse_and_validate_command(line)
+
+            if err != "OK":
+                client.send(f"ERR {err}\n".encode("utf-8"))
+                log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd={cmd} {err}")
                 continue
 
-            name_to_kick = line[5:].strip()
-            if name_to_kick:
-                kick_user(name_to_kick)
-                log_event("KICK", username=name_to_kick, extra_info=f"by={current_nick}")
-            continue
+            if line.startswith('KICK '):
+                if not has_permission(user_role, Permission.KICK):
+                    client.send("MSG PERMISSION_DENIED: You do not have KICK permission.\n".encode("utf-8"))
+                    log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=KICK_PERMISSION_DENIED")
+                    continue
 
-        """Check if the user is admin and ban the target user"""
-        if line.startswith('BAN '):
-            if not has_permission(user_role, Permission.BAN):
-                client.send("MSG PERMISSION_DENIED: You do not have BAN permission.\n".encode("utf-8"))
-                log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_PERMISSION_DENIED")
+                name_to_kick = line[5:].strip()
+                if name_to_kick:
+                    kick_user(name_to_kick)
+                    log_event("KICK", username=name_to_kick, extra_info=f"by={current_nick}")
                 continue
 
-            name_to_ban = line[4:].strip()
-            if name_to_ban:
-                add_ban(name_to_ban)
-                kick_user(name_to_ban)
-                print(f'{name_to_ban} was banned!')
-                log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
+            """Check if the user is admin and ban the target user"""
+            if line.startswith('BAN '):
+                if not has_permission(user_role, Permission.BAN):
+                    client.send("MSG PERMISSION_DENIED: You do not have BAN permission.\n".encode("utf-8"))
+                    log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_PERMISSION_DENIED")
+                    continue
 
-            continue
+                name_to_ban = line[4:].strip()
+                if name_to_ban:
+                    add_ban(name_to_ban)
+                    kick_user(name_to_ban)
+                    print(f'{name_to_ban} was banned!')
+                    log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
 
-        if line.startswith("UNBAN "):
-            if not has_permission(user_role, Permission.UNBAN):
-                client.send("MSG PERMISSION DENIED: You do not have UNBAN permission.\n".encode("utf-8"))
-                log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=UNBAN_PERMISSION_DENIED")
                 continue
 
-            target_user = line[6:].strip()
-            remove_ban(target_user)
-            print(f'{target_user} was unbanned!')
-            log_event("UNBAN", username=target_user, extra_info=f"by={current_nick}")
+            if line.startswith("UNBAN "):
+                if not has_permission(user_role, Permission.UNBAN):
+                    client.send("MSG PERMISSION DENIED: You do not have UNBAN permission.\n".encode("utf-8"))
+                    log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=UNBAN_PERMISSION_DENIED")
+                    continue
+
+                target_user = line[6:].strip()
+                remove_ban(target_user)
+                print(f'{target_user} was unbanned!')
+                log_event("UNBAN", username=target_user, extra_info=f"by={current_nick}")
 
         """Broadcast the normal message"""
         if line.startswith("MSG "):
             content = line[4:]
+            valid, err_msg = validate_message(content)
+
+            if not valid:
+                client.send(f"ERR {err_msg}\n".encode("utf-8"))
+                log_event("INVALID_MESSAGE", username=current_nick, extra_info=f"msg={content} {err_msg}")
+                continue
+
             broadcast(f"MSG {current_nick}: {content}\n".encode("utf-8"), sender=client)

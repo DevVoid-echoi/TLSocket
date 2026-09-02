@@ -7,8 +7,10 @@ import sys
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 USERS_FILE = os.path.join(BASE_DIR, "data", "user.json")
 BAN_FILE = os.path.join(BASE_DIR, "data", "ban.txt")
+SECURITY_DIR = os.path.join(BASE_DIR, "security")
 
 from auth.password import ADMIN_PASSWORD
+from security.validation import validate_nickname
 
 def _load_users():
     """Read accounts from JSON file"""
@@ -47,6 +49,10 @@ def verify_password(stored_hash:str, provided_password: str)->bool:
 def register(username, password, role="user"):
     """Register new account"""
     username = username.strip().lower()
+    valid, err_nickname = validate_nickname(username)
+    if not valid:
+        return False, "Invalid username"
+
     users = _load_users()
 
     if username in users:

@@ -63,6 +63,19 @@ def receive():
                 parts = line.split(" ", 2)
                 if len(parts) == 3:
                     _, username, password = parts
+                    username = username.strip().lower()
+                    already_online = False
+
+                    # Check whether the username has been used
+                    with state_lock:
+                        if username in nicknames:
+                            already_online = True
+                    
+                    if already_online:
+                        client.send("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
+                        log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
+                        continue
+
                     success, user_session = login(username, password)
                     if success and user_session:
                         session = user_session
@@ -74,6 +87,7 @@ def receive():
                     else:
                         client.send("ERR WRONG_AUTH\n".encode("utf-8")) # Decline due to wrong information
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
+                        brute_force_detector.register_failed_attempt(ip_addr)
                         continue
                 else:
                     client.send("ERR INVALID_FORMAT\n".encode("utf-8"))
@@ -90,11 +104,13 @@ def receive():
                         log_event("REGISTER_SUCCESS", username=username, ip=ip_addr)
                     else:
                         client.send(f"ERR {msg}\n".encode("utf-8")) # Show error message
+                        log_event("REGISTER_FAILED", username=username, ip=ip_addr, extra_info=f"reason={msg}")
                 else:
                     client.send("ERR INVALID_FORMAT\n".encode("utf-8"))
+                    log_event("REGISTER_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_FORMAT")
                 continue
         
-        # Nếu không có session (Client chủ động ngắt kết nối)
+        # --- Check if session is valid ---
         if not session:
             client.close()
             continue
@@ -102,13 +118,6 @@ def receive():
         nickname = session["username"]
 
         # --- Check connect conditions ---
-        # Check whether the username has been used
-        with state_lock:
-            if nickname in nicknames:
-                client.send("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
-                log_event("LOGIN_FAILED", username=nickname, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
-                client.close()
-                continue
 
         # Check if the user is banned
         banned_users = get_banned_users()
@@ -155,10 +164,10 @@ def server_console_input():
                                 user_sessions[user_sock]["role"] = new_role
                                 user_sock.send(f"MSG [SYSTEM] Your role has been updated to '{new_role}' by Server Admin!\n".encode("utf-8"))
                                 if new_role == "admin":
-                                    user_sock.send("MSG [SYSTEM] New commands unlocked:\n".encode("utf-8"))
-                                    user_sock.send("MSG [SYSTEM] You have been granted '{role}' role by Server Admin!\n".encode("utf-8"))
-                                    user_sock.send("MSG - Type '/kick' <user_name> to kick a user out of the chat room\n".encode("utf-8"))
-                                    user_sock.send("MSG - Type '/ban' <user_name> to ban a user from the chat room\n".encode("utf-8"))
+                                    user_sock.send(f"MSG [SYSTEM] New commands unlocked:\n".encode("utf-8"))
+                                    user_sock.send(f"MSG [SYSTEM] You have been granted '{new_role}' role by Server Admin!\n".encode("utf-8"))
+                                    user_sock.send(f"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n".encode("utf-8"))
+                                    user_sock.send(f"MSG - Type '/ban' <user_name> to ban a user from the chat room\n".encode("utf-8"))
                 else:
                     print(f"[SERVER CONSOLE] Failed: User '{target_user}' not found.")
 
