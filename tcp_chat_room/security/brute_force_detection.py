@@ -4,10 +4,12 @@ from collections import defaultdict
 from typing import Iterable, List, Dict
 from security.logger import log_alert
 from config import MAX_LOGIN_ATTEMPTS, LOGIN_WINDOW, BLOCK_DURATION
+import json
 
 # Define the base directory for the project
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_PARSER_DIR = os.path.join(BASE_DIR, "log_parser")
+DATA_DIR = os.path.join(BASE_DIR, "data")
 
 from log_parser.models import LogRecord
 
@@ -22,6 +24,33 @@ class BruteForceDetector:
         self.failed_attempts_history: Dict[str, List[datetime]] = defaultdict(list)
         self.violation_count: Dict[str, int] = defaultdict(int)  # Dictionary to keep track of violation counts for each IP
         self.blocked_ips: Dict[str,datetime] = {} # Dictionary to keep track of blocked IPs and their unblock time
+        self.db_file = os.path.join(DATA_DIR, "brute_force_state.json")  # Path to the JSON file for saving state
+        self.load_state()
+
+    def save_state(self):
+        data = {
+            "violation_count": dict(self.violation_count),
+            "blocked_ips": {
+                ip: unblock_time.strftime("%Y-%m-%d %H:%M:%S") for ip, unblock_time in self.blocked_ips.items()
+            }
+        }
+        with open(self.db_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+    def load_state(self):
+        if os.path.exists(self.db_file):
+            try:
+                with open (self.db_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                for ip, count in data.get("violation_count", {}).items():
+                    self.violation_count[ip] = count
+
+                for ip, unblock_time_str in data.get("blocked_ips", {}).items():
+                    self.blocked_ips[ip] = datetime.strptime(unblock_time_str, "%Y-%m-%d %H:%M:%S")
+
+            except Exception as e:
+                print(f"[ERROR] Failed to load state from {self.db_file}: {e}")
 
     def _parse_timestamp(self, date_str: str, time_str: str) -> datetime:
         # Convert date and time strings into a datetime object
@@ -46,6 +75,7 @@ class BruteForceDetector:
         
         if datetime.now() > self.blocked_ips[ip]:
             del self.blocked_ips[ip]
+            self.save_state()  # Save the state after unblocking the IP
             return False
 
         return True
@@ -83,6 +113,8 @@ class BruteForceDetector:
 
             log_alert(ip=ip, failed_attempts=valid_attempts, window_seconds=self.window_seconds)  # Log an alert
             self.failed_attempts_history[ip].clear()  # Clear the history for this IP
+
+            self.save_state()  # Save the state after blocking the IP
 
 def detect_brute_force_stream(records: Iterable[LogRecord], max_attempts: int=5, window_seconds: int=60):
     # Create a BruteForceDetector instance and process a stream of log records

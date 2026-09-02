@@ -25,7 +25,7 @@ def receive():
     """Receive message from clients"""
     while True:
         client, address = server.accept()
-        print(f"Connected with {str(address)}") # Kết nối với client ở địa chỉ "address"
+        print(f"Connected with {str(address)}")
         ip_addr = address[0]
 
         log_event("USER_CONNECTED", ip=ip_addr)

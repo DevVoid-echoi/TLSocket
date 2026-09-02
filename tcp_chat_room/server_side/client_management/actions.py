@@ -85,13 +85,6 @@ def kick_user(name):
 
 def handle_messages(client):
     """Handle received messages from users"""
-    session = user_sessions.get(client)
-    if not session:
-        client.send("ERR NOT_AUTHENTICATED\n".encode("utf-8"))
-        return
-
-    user_role = session.get("role", "user")
-
     buffer = ""
     while True:
         line, buffer = read_line(client, buffer)
@@ -99,6 +92,13 @@ def handle_messages(client):
         if line is None:
             clean_up_client(client, "disconnected")
             break
+
+        session = user_sessions.get(client)
+        if not session:
+            client.send("ERR NOT_AUTHENTICATED\n".encode("utf-8"))
+            break
+
+        user_role = session.get("role", "user")
 
         with state_lock:
             current_nick = (
