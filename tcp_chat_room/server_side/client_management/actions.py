@@ -6,8 +6,10 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECURITY_DIR = os.path.join(BASE_DIR, "security")
+AUTH_DIR = os.path.join(BASE_DIR, "auth")
 
 from security.validation import validate_message, parse_and_validate_command
+from auth.authentication import set_user_role
 
 clients = []
 nicknames = []
@@ -83,11 +85,10 @@ def kick_user(name):
     if client_to_kick:
         try:
             # Print the kick announcement and close the connection of the kicked user
-            client_to_kick.send("MSG You were kicked by an admin!\n".encode("utf-8"))
+            client_to_kick.send("MSG You were kicked!\n".encode("utf-8"))
             client_to_kick.close()
         except Exception:
             pass
-        broadcast(f"MSG {name} was kicked by an admin!\n".encode('utf-8')) # Send the announcement to all users
 
 def handle_messages(client):
     """Handle received messages from users"""
@@ -119,8 +120,7 @@ def handle_messages(client):
         if not current_nick:
             break
 
-        """Check if the user is admin and remove the target user"""
-        if line.startswith("KICK ", "BAN ", "UNBAN "):
+        if line.startswith(("KICK ", "BAN ", "UNBAN ", "SET ")):
             cmd, args, err = parse_and_validate_command(line)
 
             if err != "OK":
@@ -128,6 +128,7 @@ def handle_messages(client):
                 log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd={cmd} {err}")
                 continue
 
+            # Check if the user is admin and remove the target user
             if line.startswith('KICK '):
                 if not has_permission(user_role, Permission.KICK):
                     client.send("MSG PERMISSION_DENIED: You do not have KICK permission.\n".encode("utf-8"))
@@ -137,11 +138,11 @@ def handle_messages(client):
                 name_to_kick = line[5:].strip()
                 if name_to_kick:
                     kick_user(name_to_kick)
+                    broadcast(f"MSG {name_to_kick} was kicked by {current_nick}!\n".encode('utf-8')) # Send the announcement to all users
                     log_event("KICK", username=name_to_kick, extra_info=f"by={current_nick}")
                 continue
-
-            """Check if the user is admin and ban the target user"""
-            if line.startswith('BAN '):
+            # Check if the user is admin and ban the target user
+            elif line.startswith('BAN '):
                 if not has_permission(user_role, Permission.BAN):
                     client.send("MSG PERMISSION_DENIED: You do not have BAN permission.\n".encode("utf-8"))
                     log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_PERMISSION_DENIED")
@@ -151,12 +152,12 @@ def handle_messages(client):
                 if name_to_ban:
                     add_ban(name_to_ban)
                     kick_user(name_to_ban)
+                    broadcast(f"MSG {name_to_ban} was kicked by {current_nick}!\n".encode('utf-8')) # Send the announcement to all users
                     print(f'{name_to_ban} was banned!')
                     log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
 
                 continue
-
-            if line.startswith("UNBAN "):
+            elif line.startswith("UNBAN "):
                 if not has_permission(user_role, Permission.UNBAN):
                     client.send("MSG PERMISSION DENIED: You do not have UNBAN permission.\n".encode("utf-8"))
                     log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=UNBAN_PERMISSION_DENIED")
@@ -166,6 +167,39 @@ def handle_messages(client):
                 remove_ban(target_user)
                 print(f'{target_user} was unbanned!')
                 log_event("UNBAN", username=target_user, extra_info=f"by={current_nick}")
+            elif line.startswith("SET "):
+                if not has_permission(user_role, Permission.SET):
+                    client.send("MSG PERMISSION DENIED: You do not have SET permission.\n".encode("utf=8"))
+                    log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=SET_PERMISSION_DENIED")
+                    continue
+
+                parts = line[4:].strip().split(maxsplit=1)
+                target_user = parts[0].strip().lower()
+                new_role = parts[1].strip().lower()
+
+                if set_user_role(target_user, new_role):
+                    print(f"{target_user} role has been changed to {new_role} by {current_nick}")
+                    broadcast(f"MSG {target_user} role has been changed to {new_role} by {current_nick}\n".encode("utf-8"))
+                    if new_role in ["moderator", "admin"]:
+                        target_client.send(f"MSG {'-' * 50}\n".encode("utf-8"))
+                        target_client.send(f"MSG [SYSTEM] New commands unlocked:\n".encode("utf-8"))
+                        target_client.send(f"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n".encode("utf-8"))
+                        target_client.send(f"MSG - Type '/ban' <user_name> to ban a user from the chat room\n".encode("utf-8"))
+                        target_client.send(f"MSG - Type '/unban' <user_name> to unban a user\n".encode("utf-8"))
+                        if new_role == "admin":
+                            target_client.send(f"MSG - Type '/set' <username> <role> to set a new role for a user\n".encode("utf-8"))
+                        target_client.send(f"MSG {'-' * 50}\n".encode("utf-8"))
+                    log_event("SET_ROLE", username=target_user, extra_info=f"by={current_nick} new_role={new_role}")
+
+                    with state_lock:
+                        if target_user in nicknames:
+                            index = nicknames.index(target_user)
+                            target_client = clients[index]
+                            if target_client in user_sessions:
+                                user_sessions[target_client]["role"] = new_role
+                else:
+                    client.send(f"ERR INVALID_ROLE: Role '{new_role}' is invalid.\n".encode("utf-8"))
+                    log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=SET_INVALID_ROLE new_role={new_role}")
 
         """Broadcast the normal message"""
         if line.startswith("MSG "):

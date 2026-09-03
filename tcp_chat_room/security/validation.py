@@ -55,5 +55,8 @@ def parse_and_validate_command(line:str) -> tuple[str, list[str], str]:
             return cmd, [], f"SYNTAX_USAGE {cmd} command requires at least one argument."
         if len(args) > 1:
             return cmd, [], f"TOO_MANY_ARGUMENTS {cmd} command accepts only one argument."
+    if cmd in ["SET"]:
+        if len(args) != 2:
+            return cmd, [], f"SYNTAX_USAGE {cmd} command requires two arguments: <username> <role>."
     
     return cmd, args, "OK"

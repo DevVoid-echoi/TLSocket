@@ -59,40 +59,44 @@ def write(client, nickname):
             
             cmd = user_input.strip()
 
-            """Disconnect when receive quit/exit command"""
+            # Disconnect when receive quit/exit command
             if cmd.lower() in ["/quit", "/exit"]:
                 stop_threads = True
                 sys.stdout.write("\r\033[KDisconnecting from server...\n")
                 sys.stdout.flush()
                 client.close()
                 break
-            
-            """Send KICK command to the server for permission validation"""
-            if cmd.lower().startswith("/kick "):
+            # Send KICK command to the server for permission validation
+            elif cmd.lower().startswith("/kick "):
                 target_user = cmd[6:].strip()
                 if not target_user:
                     print("Usage: /kick <username>")
                     continue
                 client.send(f"KICK {target_user}\n".encode('utf-8'))
                 continue
-
-            """Send BAN command to the server for permission validation"""
-            if cmd.lower().startswith("/ban "):
+            # Send BAN command to the server for permission validation
+            elif cmd.lower().startswith("/ban "):
                 target_user = cmd[5:].strip()
                 if not target_user:
                     print("Usage: /ban <username>")
                     continue
                 client.send(f"BAN {target_user}\n".encode('utf-8'))
                 continue
-
-            if cmd.lower().startswith("/unban "):
+            elif cmd.lower().startswith("/unban "):
                 target_user = cmd[7:].strip()
                 if not target_user:
-                    print("Usage: /kick <username>")
+                    print("Usage: /unban <username>")
                     continue
                 client.send(f"UNBAN {target_user}\n".encode('utf-8'))
-
-            if cmd:
+            elif cmd.lower().startswith("/set "):
+                parts = cmd[5:].strip().split(maxsplit=1)
+                if len(parts) != 2:
+                    print("Usage: /set <username> <role>")
+                    continue
+                target_user = parts[0].strip().lower()
+                new_role = parts[1].strip().lower()
+                client.send(f"SET {target_user} {new_role}\n".encode('utf-8'))
+            elif cmd:
                 client.send(f"MSG {user_input}\n".encode('utf-8'))
 
         except (KeyboardInterrupt, EOFError):

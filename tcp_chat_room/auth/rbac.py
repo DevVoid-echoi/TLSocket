@@ -3,9 +3,17 @@ class Permission:
     KICK = "KICK"
     BAN = "BAN"
     UNBAN = "UNBAN"
+    SET = "SET"
 
 ROLES_PERMISSIONS = {
     "admin": {
+        Permission.CHAT,
+        Permission.KICK,
+        Permission.BAN,
+        Permission.UNBAN,
+        Permission.SET
+    },
+    "moderator": {
         Permission.CHAT,
         Permission.KICK,
         Permission.BAN,

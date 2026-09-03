@@ -13,4 +13,6 @@ def print_instructions(nickname, user_role = "user"):
         print(" - Type '/ban' <user_name> to ban a user from the chat room")
     if has_permission(user_role, Permission.UNBAN):
         print(" - Type '/unban' <user_name> to unban a user")
+    if has_permission(user_role, Permission.SET):
+        print(" - Type '/set' <username> <role> to set a new role for a user")
     print("-" * 50)

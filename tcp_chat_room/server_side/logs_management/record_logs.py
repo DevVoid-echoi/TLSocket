@@ -1,6 +1,7 @@
 import os
 import sys
 import logging
+import threading
 from datetime import datetime
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -20,6 +21,8 @@ DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 formatter = logging.Formatter(LOG_FORMAT, datefmt = DATE_FORMAT)
 
+log_lock = threading.Lock()
+
 # --- Server Logger ---
 server_logger =logging.getLogger("ServerLogger")
 server_logger.setLevel(logging.INFO)
@@ -36,7 +39,10 @@ security_file_handler = logging.FileHandler(SECURITY_LOGS_PATH, encoding='utf-8'
 security_file_handler.setFormatter(formatter)
 security_logger.addHandler(security_file_handler)
 
-brute_force_detector = BruteForceDetector(max_attempts=MAX_LOGIN_ATTEMPTS, window_seconds=LOGIN_WINDOW)
+brute_force_detector = BruteForceDetector(
+    max_attempts=MAX_LOGIN_ATTEMPTS,
+    window_seconds=LOGIN_WINDOW,
+    block_duration=BLOCK_DURATION)
 
 # --- Log events ---
 def log_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra_info: str = ""):
@@ -46,27 +52,28 @@ def log_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra
     if extra_info:
         msg += f"{extra_info}"
     
-    if event_type in ["USER_CONNECTED", "USER_DISCONNECTED", "CONNECTION_ERROR"]:
-        server_logger.info(msg)
-        server_file_handler.flush()
-    if event_type in ["LOGIN_SUCCESS", "REGISTER_SUCCESS"]:
-        server_logger.info(msg)
-        server_file_handler.flush()
-        security_logger.info(msg)
-        security_file_handler.flush()
-    if event_type in ["SET", "KICK", "BAN", "UNBAN"]:
-        security_logger.info(msg)
-        security_file_handler.flush()
-    if event_type in ["LOGIN_FAILED", "INVALID_COMMAND", "RATE_LIMIT_EXCEEDED"]:
-        security_logger.warning(msg)
-        security_file_handler.flush()
+    with log_lock:
+        if event_type in ["USER_CONNECTED", "USER_DISCONNECTED", "CONNECTION_ERROR"]:
+            server_logger.info(msg)
+            server_file_handler.flush()
+        elif event_type in ["LOGIN_SUCCESS", "REGISTER_SUCCESS"]:
+            server_logger.info(msg)
+            server_file_handler.flush()
+            security_logger.info(msg)
+            security_file_handler.flush()
+        elif event_type in ["SET", "KICK", "BAN", "UNBAN"]:
+            security_logger.info(msg)
+            security_file_handler.flush()
+        elif event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED"]:
+            security_logger.warning(msg)
+            security_file_handler.flush()
 
     now = datetime.now()
     record=LogRecord(
         date=now.strftime("%Y-%m-%d"),
         time=now.strftime("%H:%M:%S"),
         event_type=event_type,
-        level="WARNING" if event_type == "LOGIN_FAILED" or event_type == "RATE_LIMIT_EXCEEDED" else "INFO",
+        level="WARNING" if event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED"] else "INFO",
         username=username,
         ip=ip,
         extra_info=extra_info
