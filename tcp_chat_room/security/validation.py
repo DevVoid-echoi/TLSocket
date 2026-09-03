@@ -25,7 +25,9 @@ def validate_nickname(nickname: str) -> tuple[bool, str]:
 
     if not NICKNAME_REGEX.match(nickname):
         return False, "INVALID_CHARACTERS Nickname can only contain alphanumeric characters and underscores."
-
+    if "admin" in nickname:
+        return False, "FORBIDDEN_NICKNAME Nickname cannot contain the word 'admin'."
+        
     return True, "OK"
 
 def validate_message(message:str) -> tuple[bool, str]:
