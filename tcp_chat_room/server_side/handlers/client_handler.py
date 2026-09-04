@@ -1,5 +1,5 @@
-from server_side.client_management.lock import state_lock, ip_lock
-from server_side.client_management.ban_handler import add_ban, remove_ban
+from server_side.handlers.lock import state_lock, ip_lock
+from server_side.handlers.ban_handler import add_ban, remove_ban
 from auth.rbac import has_permission, Permission
 from server_side.logs_management.record_logs import log_event
 from collections import defaultdict
@@ -38,7 +38,6 @@ def accept_new_client(client_socket, client_ip):
     with ip_lock:
         if ip_connection_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
             try:
-                print(f"ip_connection_counts[{client_ip}] = {ip_connection_counts[client_ip]}")
                 client_socket.send("ERR CONNECTION_LIMIT_REACHED.\n".encode("utf-8"))
                 client_socket.close()
             except OSError:
@@ -47,7 +46,6 @@ def accept_new_client(client_socket, client_ip):
             return False
         
         ip_connection_counts[client_ip] += 1
-        print(f"ip_connection_counts[{client_ip}] = {ip_connection_counts[client_ip]}")
         return True
 
 
@@ -69,7 +67,6 @@ def clean_up_client(client, disconnect_msg, client_ip=None):
     if recorded_ip:
         with ip_lock:
             ip_connection_counts[client_ip] -=  1
-            print(f"ip_connection_counts[{client_ip}] = {ip_connection_counts[client_ip]}")
             if ip_connection_counts[client_ip] <= 0:
                 del ip_connection_counts[client_ip]
 

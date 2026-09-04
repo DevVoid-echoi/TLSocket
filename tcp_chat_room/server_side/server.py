@@ -11,9 +11,9 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BAN_FILE_PATH = os.path.join(BASE_DIR, "data", "ban.txt")
 
 from config import HOST, PORT
-from client_management.lock import state_lock
-from client_management.ban_handler import get_banned_users, add_ban, remove_ban
-from client_management.actions import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client
+from handlers.lock import state_lock
+from handlers.ban_handler import get_banned_users, add_ban, remove_ban
+from handlers.client_handler import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client
 from auth.authentication import login, register, set_user_role
 from logs_management.record_logs import log_event, brute_force_detector, log_test_event
 from security.brute_force_detection import BruteForceDetector
