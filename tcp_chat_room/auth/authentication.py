@@ -73,11 +73,6 @@ def login(username, password):
     username = username.strip().lower()
     users = _load_users()
 
-    # Register an admin acoount if the acoount list is blank
-    if not users and username == "admin":
-        register("admin", ADMIN_PASSWORD, role="admin")
-        users = _load_users()
-
     if username not in users:
         print(f"[AUTH LOG] Login failed: Username '{username}' not found.")
         return False, None

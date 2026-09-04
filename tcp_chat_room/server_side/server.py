@@ -13,12 +13,12 @@ BAN_FILE_PATH = os.path.join(BASE_DIR, "data", "ban.txt")
 from config import HOST, PORT
 from client_management.lock import state_lock
 from client_management.ban_handler import get_banned_users, add_ban, remove_ban
-from client_management.actions import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, kick_user
+from client_management.actions import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client
 from auth.authentication import login, register, set_user_role
-from logs_management.record_logs import log_event, brute_force_detector
+from logs_management.record_logs import log_event, brute_force_detector, log_test_event
 from security.brute_force_detection import BruteForceDetector
 
-TEST_MODE = True  # Set to True to enable test mode for IP address overriding
+TEST_MODE = False  # Set to True to enable test mode for IP address overriding
 
 """Connect using IPv4 and TCP"""
 server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -38,115 +38,127 @@ def receive():
         real_ip_addr = address[0]
         ip_addr = real_ip_addr
 
+        if not accept_new_client(client, real_ip_addr):
+            continue
+
         log_event("USER_CONNECTED", ip=ip_addr)
 
-        buffer = ""
-        session = None
+        try:
+            buffer = ""
+            session = None
 
-        # --- AUTHENTICATION ---
-        while not session:
-            line, buffer = read_line(client, buffer)
-            if not line:
-                break
+            # --- AUTHENTICATION ---
+            while not session:
+                line, buffer = read_line(client, buffer)
+                if not line:
+                    break
 
-            if line.startswith("CLIENT_IP "):
-                if TEST_MODE:
-                    parts = line.split(" ", 1)
-                    if len(parts) == 2:
-                        ip_addr = parts[1].strip()
-                        # print(f"[TEST MODE] Real IP {real_ip_addr} overridden with Fake IP: {ip_addr}")
-                        log_event("USER_CONNECTED", ip=ip_addr, extra_info=f"real_ip={real_ip_addr}")
+                if line.startswith("CLIENT_IP "):
+                    if TEST_MODE:
+                        parts = line.split(" ", 1)
+                        if len(parts) == 2:
+                            ip_addr = parts[1].strip()
+                            # print(f"[TEST MODE] Real IP {real_ip_addr} overridden with Fake IP: {ip_addr}")
+                            log_test_event("USER_CONNECTED", ip=ip_addr, extra_info=f"real_ip={real_ip_addr}")
                     else: 
                         client.send("ERR PERMISSION_DENIED.\n".encode("utf-8"))
-                continue
-            """Check for valid login information"""
+                    continue
+                
+                if brute_force_detector.is_ip_blocked(ip_addr):
+                    remaining_time = brute_force_detector.get_remaining_ban_time(ip_addr)
+                    print(f"[SECURITY] Refused connection from blocked IP: {ip_addr} ({remaining_time}s remaining)")
+                    client.send(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode("utf-8"))
+                    log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info=f"reason=BRUTE_FORCE_DETECTION remaining_sec={remaining_time}")
+                    break
 
-            if brute_force_detector.is_ip_blocked(ip_addr):
-                remaining_time = brute_force_detector.get_remaining_ban_time(ip_addr)
-                print(f"[SECURITY] Refused connection from blocked IP: {ip_addr} ({remaining_time}s remaining)")
-                client.send(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode("utf-8"))
-                log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info=f"reason=BRUTE_FORCE_DETECTION remaining_sec={remaining_time}")
-                break
+                if line.startswith("LOGIN "):
+                    parts = line.split(" ", 2)
+                    if len(parts) == 3:
+                        _, username, password = parts
+                        username = username.strip().lower()
+                        already_online = False
 
-            if line.startswith("LOGIN "):
-                parts = line.split(" ", 2)
-                if len(parts) == 3:
-                    _, username, password = parts
-                    username = username.strip().lower()
-                    already_online = False
+                        # Check whether the username has been used
+                        with state_lock:
+                            if username in nicknames:
+                                already_online = True
+                        
+                        if already_online:
+                            client.send("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
+                            log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
+                            continue
 
-                    # Check whether the username has been used
-                    with state_lock:
-                        if username in nicknames:
-                            already_online = True
-                    
-                    if already_online:
-                        client.send("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
-                        log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
-                        continue
-
-                    success, user_session = login(username, password)
-                    if success and user_session:
-                        if username in get_banned_users():
+                        success, user_session = login(username, password)
+                        if success and user_session:
+                            if username in get_banned_users():
+                                client.send("ERR BANNED\n".encode('utf-8'))
+                                log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
+                                continue
+                            session = user_session
+                            log_event("LOGIN_SUCCESS", username=username, ip=ip_addr)
+                        elif success and not user_session:
                             client.send("ERR BANNED\n".encode('utf-8'))
                             log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                             continue
-                        session = user_session
-                        log_event("LOGIN_SUCCESS", username=username, ip=ip_addr)
-                    elif success and not user_session:
-                        client.send("ERR BANNED\n".encode('utf-8'))
-                        log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
-                        continue
+                        else:
+                            client.send("ERR WRONG_AUTH\n".encode("utf-8")) # Decline due to wrong information
+                            log_event("LOGIN_FAILED", username=username, ip=ip_addr)
+                            continue
                     else:
-                        client.send("ERR WRONG_AUTH\n".encode("utf-8")) # Decline due to wrong information
-                        log_event("LOGIN_FAILED", username=username, ip=ip_addr)
+                        client.send("ERR INVALID_FORMAT\n".encode("utf-8"))
                         continue
-                else:
-                    client.send("ERR INVALID_FORMAT\n".encode("utf-8"))
+                # Register new users
+                elif line.startswith("REGISTER "):
+                    parts = line.split(" ", 2)
+                    if len(parts) == 3:
+                        _, username, password = parts
+                        success, msg = register(username, password)
+                        if success:
+                            client.send(f"OK {msg}\n".encode("utf-8")) # Send OK message if succeess
+                            log_event("REGISTER_SUCCESS", username=username, ip=ip_addr)
+                        else:
+                            client.send(f"ERR {msg}\n".encode("utf-8")) # Show error message
+                            log_event("REGISTER_FAILED", username=username, ip=ip_addr, extra_info=f"reason={msg}")
+                    else:
+                        client.send("ERR INVALID_FORMAT\n".encode("utf-8"))
+                        log_event("REGISTER_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_FORMAT")
                     continue
-            # Register new users
-            elif line.startswith("REGISTER "):
-                parts = line.split(" ", 2)
-                if len(parts) == 3:
-                    _, username, password = parts
-                    success, msg = register(username, password)
-                    if success:
-                        client.send(f"OK {msg}\n".encode("utf-8")) # Send OK message if succeess
-                        log_event("REGISTER_SUCCESS", username=username, ip=ip_addr)
-                    else:
-                        client.send(f"ERR {msg}\n".encode("utf-8")) # Show error message
-                        log_event("REGISTER_FAILED", username=username, ip=ip_addr, extra_info=f"reason={msg}")
                 else:
-                    client.send("ERR INVALID_FORMAT\n".encode("utf-8"))
-                    log_event("REGISTER_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_FORMAT")
-                continue
-            else:
-                client.send("ERR INVALID_COMMAND\n".encode("utf-8"))
-                log_event("LOGIN_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_COMMAND")
-                continue
+                    client.send("ERR INVALID_COMMAND\n".encode("utf-8"))
+                    log_event("LOGIN_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_COMMAND")
+                    continue
         
-        # --- Check if session is valid ---
-        if not session:
+            # --- Check if session is valid ---
+            if not session:
+                try:
+                    clean_up_client(client, "AUTHENTICATION_FAILED", client_ip=real_ip_addr)
+                except:
+                    pass
+                continue
+                    
+            nickname = session["username"]
+
+            with state_lock:
+                clients.append(client)
+                nicknames.append(nickname)
+                user_sessions[client] = session
+
+            # --- Succeed and start threads ---
+            print(f"User '{nickname}' ({session['role']}) connected successfully!")
+            client.send(f"OK Connected as {nickname}, role:{session['role']}\n".encode("utf-8"))
+            broadcast(f"MSG {nickname} joined the chat!\n".encode("utf-8"), sender=client)
+
+            thread = threading.Thread(target=handle_messages, args=(client, real_ip_addr), daemon=True)
+            thread.start()
+        
+        except (OSError, ConnectionResetError, BrokenPipeError) as e:
+            print(f"[ERROR] Connection error with {address}: {e}")
+            log_event("CONNECTION_ERROR", username="Unknown", ip=real_ip_addr, extra_info=f"error={e}")
             try:
-                client.close()
+                clean_up_client(client, "CONNECTION_ERROR", client_ip=real_ip_addr)
             except:
                 pass
             continue
-                
-        nickname = session["username"]
-
-        with state_lock:
-            clients.append(client)
-            nicknames.append(nickname)
-            user_sessions[client] = session
-
-        # --- Succeed and start threads ---
-        print(f"User '{nickname}' ({session['role']}) connected successfully!")
-        client.send(f"OK Connected as {nickname}, role:{session['role']}\n".encode("utf-8"))
-        broadcast(f"MSG {nickname} joined the chat!\n".encode("utf-8"), sender=client)
-
-        thread = threading.Thread(target=handle_messages, args=(client,), daemon=True)
-        thread.start()
 
 def server_console_input():
     while True:
@@ -194,17 +206,17 @@ def server_console_input():
                     print(f"[SERVER CONSOLE] Failed: User '{target_user}' not found.")
             elif cmd.startswith("/kick "):
                 target_user = cmd[6:].strip().lower()
-                kick_user(target_user)
-                broadcast(f"MSG {target_user} was kicked by server admin!\n".encode('utf-8')) # Send the announcement to all users
-                print(f'{target_user} was kicked!')
-                log_event("KICK", username=target_user, extra_info=f"by=server_admin")
+                if kick_user(target_user):
+                    broadcast(f"MSG {target_user} was kicked by server admin!\n".encode('utf-8')) # Send the announcement to all users
+                    print(f'{target_user} was kicked!')
+                    log_event("KICK", username=target_user, extra_info=f"by=server_admin")
             elif cmd.startswith("/ban "):
                 target_user = cmd[5:].strip().lower()
-                kick_user(target_user)
-                broadcast(f"MSG {target_user} was banned by server admin!\n".encode('utf-8')) # Send the announcement to all users
-                add_ban(target_user)
-                print(f'{target_user} was banned!')
-                log_event("BAN", username=target_user, extra_info=f"by=server_admin")
+                if kick_user(target_user):
+                    broadcast(f"MSG {target_user} was banned by server admin!\n".encode('utf-8')) # Send the announcement to all users
+                    add_ban(target_user)
+                    print(f'{target_user} was banned!')
+                    log_event("BAN", username=target_user, extra_info=f"by=server_admin")
             elif cmd.startswith("/unban "):
                 target_user = cmd[7:].strip().lower()
                 remove_ban(target_user)
@@ -229,9 +241,10 @@ if __name__ == "__main__":
                     client.close()
                 except OSError:
                     pass
-                clients.clear()
-                nicknames.clear()
-                user_sessions.clear()
+
+            clients.clear()
+            nicknames.clear()
+            user_sessions.clear()
 
             server.close()
             sys.exit()

@@ -1,19 +1,24 @@
-from server_side.client_management.lock import state_lock
+from server_side.client_management.lock import state_lock, ip_lock
 from server_side.client_management.ban_handler import add_ban, remove_ban
 from auth.rbac import has_permission, Permission
 from server_side.logs_management.record_logs import log_event
+from collections import defaultdict
 import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SECURITY_DIR = os.path.join(BASE_DIR, "security")
 AUTH_DIR = os.path.join(BASE_DIR, "auth")
+CONFIG_FILE_PATH = os.path.join(BASE_DIR, "config.py")
 
 from security.validation import validate_message, parse_and_validate_command
 from auth.authentication import set_user_role
+from config import MAX_CONNECTIONS_PER_IP
 
 clients = []
 nicknames = []
 user_sessions = {}
+
+ip_connection_counts = defaultdict(int)
 
 def read_line(sock, buffer):
     """Read full-line messages"""
@@ -29,17 +34,44 @@ def read_line(sock, buffer):
     line, buffer = buffer.split("\n", 1)
     return line.strip(), buffer
 
-def clean_up_client(client, disconnect_msg):
+def accept_new_client(client_socket, client_ip):
+    with ip_lock:
+        if ip_connection_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
+            try:
+                print(f"ip_connection_counts[{client_ip}] = {ip_connection_counts[client_ip]}")
+                client_socket.send("ERR CONNECTION_LIMIT_REACHED.\n".encode("utf-8"))
+                client_socket.close()
+            except OSError:
+                pass
+            log_event("CONNECTION_LIMIT_REACHED", extra_info=f"ip={client_ip}")
+            return False
+        
+        ip_connection_counts[client_ip] += 1
+        print(f"ip_connection_counts[{client_ip}] = {ip_connection_counts[client_ip]}")
+        return True
+
+
+def clean_up_client(client, disconnect_msg, client_ip=None):
     """Clean up disconnected users"""
     with state_lock:
-            if client in clients:
-                index = clients.index(client)
-                nickname = nicknames.pop(index)
-                clients.pop(index)
-            else:
-                nickname = None
+        if client in clients:
+            index = clients.index(client)
+            nickname = nicknames.pop(index)
+            clients.pop(index)
+        else:
+            nickname = None
             
-            user_sessions.pop(client, None)
+        user_sessions.pop(client, None)
+    
+    with ip_lock:
+        recorded_ip = client_ip
+        
+    if recorded_ip:
+        with ip_lock:
+            ip_connection_counts[client_ip] -=  1
+            print(f"ip_connection_counts[{client_ip}] = {ip_connection_counts[client_ip]}")
+            if ip_connection_counts[client_ip] <= 0:
+                del ip_connection_counts[client_ip]
 
     try:
         client.close()
@@ -78,9 +110,9 @@ def kick_user(name):
     with state_lock:
         if name in nicknames:
             index = nicknames.index(name)
-            client_to_kick = clients.pop(index)
-            nicknames.pop(index)
-            user_sessions.pop(client_to_kick, None)
+            client_to_kick = clients[index]
+            session = user_sessions.get(client_to_kick, {})
+            target_ip = client_ips.get(client_to_kick)
 
     if client_to_kick:
         try:
@@ -89,15 +121,18 @@ def kick_user(name):
             client_to_kick.close()
         except Exception:
             pass
+        clean_up_client(client_to_kick, "kicked", target_ip)
+        return True
+    return False
 
-def handle_messages(client):
+def handle_messages(client, client_ip=None):
     """Handle received messages from users"""
     buffer = ""
     while True:
         line, buffer = read_line(client, buffer)
         """Clean up disconnected user if not receive any message"""
         if line is None:
-            clean_up_client(client, "disconnected")
+            clean_up_client(client, "disconnected", client_ip)
             break
         
         if len(line) > 2000:
@@ -107,6 +142,7 @@ def handle_messages(client):
         session = user_sessions.get(client)
         if not session:
             client.send("ERR NOT_AUTHENTICATED\n".encode("utf-8"))
+            clean_up_client(client, "disconnected", client_ip)
             break
 
         user_role = session.get("role", "user")
@@ -118,6 +154,7 @@ def handle_messages(client):
             )
 
         if not current_nick:
+            clean_up_client(client, "disconnected", client_ip)
             break
 
         if line.startswith(("KICK ", "BAN ", "UNBAN ", "SET ")):
@@ -137,9 +174,10 @@ def handle_messages(client):
 
                 name_to_kick = line[5:].strip()
                 if name_to_kick:
-                    kick_user(name_to_kick)
-                    broadcast(f"MSG {name_to_kick} was kicked by {current_nick}!\n".encode('utf-8')) # Send the announcement to all users
-                    log_event("KICK", username=name_to_kick, extra_info=f"by={current_nick}")
+                    if kick_user(name_to_kick):
+                        broadcast(f"MSG {name_to_kick} was kicked by {current_nick}!\n".encode('utf-8')) # Send the announcement to all users
+                        print(f'{name_to_kick} was kicked!')
+                        log_event("KICK", username=name_to_kick, extra_info=f"by={current_nick}")
                 continue
             # Check if the user is admin and ban the target user
             elif line.startswith('BAN '):
@@ -151,10 +189,10 @@ def handle_messages(client):
                 name_to_ban = line[4:].strip()
                 if name_to_ban:
                     add_ban(name_to_ban)
-                    kick_user(name_to_ban)
-                    broadcast(f"MSG {name_to_ban} was kicked by {current_nick}!\n".encode('utf-8')) # Send the announcement to all users
-                    print(f'{name_to_ban} was banned!')
-                    log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
+                    if kick_user(name_to_ban):
+                        broadcast(f"MSG {name_to_ban} was banned by {current_nick}!\n".encode('utf-8')) # Send the announcement to all users
+                        print(f'{name_to_ban} was banned!')
+                        log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
 
                 continue
             elif line.startswith("UNBAN "):
@@ -167,36 +205,42 @@ def handle_messages(client):
                 remove_ban(target_user)
                 print(f'{target_user} was unbanned!')
                 log_event("UNBAN", username=target_user, extra_info=f"by={current_nick}")
+                continue
             elif line.startswith("SET "):
                 if not has_permission(user_role, Permission.SET):
-                    client.send("MSG PERMISSION DENIED: You do not have SET permission.\n".encode("utf=8"))
+                    client.send("MSG PERMISSION DENIED: You do not have SET permission.\n".encode("utf-8"))
                     log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=SET_PERMISSION_DENIED")
                     continue
 
                 parts = line[4:].strip().split(maxsplit=1)
+                if len(parts) != 2:
+                    client.send("ERR INVALID_FORMAT: Usage: SET <username> <role>\n".encode("utf-8"))
+                    continue
                 target_user = parts[0].strip().lower()
                 new_role = parts[1].strip().lower()
 
                 if set_user_role(target_user, new_role):
                     print(f"{target_user} role has been changed to {new_role} by {current_nick}")
                     broadcast(f"MSG {target_user} role has been changed to {new_role} by {current_nick}\n".encode("utf-8"))
-                    if new_role in ["moderator", "admin"]:
-                        target_client.send(f"MSG {'-' * 50}\n".encode("utf-8"))
-                        target_client.send(f"MSG [SYSTEM] New commands unlocked:\n".encode("utf-8"))
-                        target_client.send(f"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n".encode("utf-8"))
-                        target_client.send(f"MSG - Type '/ban' <user_name> to ban a user from the chat room\n".encode("utf-8"))
-                        target_client.send(f"MSG - Type '/unban' <user_name> to unban a user\n".encode("utf-8"))
-                        if new_role == "admin":
-                            target_client.send(f"MSG - Type '/set' <username> <role> to set a new role for a user\n".encode("utf-8"))
-                        target_client.send(f"MSG {'-' * 50}\n".encode("utf-8"))
-                    log_event("SET_ROLE", username=target_user, extra_info=f"by={current_nick} new_role={new_role}")
-
+                    target_client = None
                     with state_lock:
                         if target_user in nicknames:
                             index = nicknames.index(target_user)
                             target_client = clients[index]
                             if target_client in user_sessions:
                                 user_sessions[target_client]["role"] = new_role
+                    if target_client:
+                        if new_role in ["moderator", "admin"]:
+                            target_client.send(f"MSG {'-' * 50}\n".encode("utf-8"))
+                            target_client.send(f"MSG [SYSTEM] New commands unlocked:\n".encode("utf-8"))
+                            target_client.send(f"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n".encode("utf-8"))
+                            target_client.send(f"MSG - Type '/ban' <user_name> to ban a user from the chat room\n".encode("utf-8"))
+                            target_client.send(f"MSG - Type '/unban' <user_name> to unban a user\n".encode("utf-8"))
+                            if new_role == "admin":
+                                target_client.send(f"MSG - Type '/set' <username> <role> to set a new role for a user\n".encode("utf-8"))
+                            target_client.send(f"MSG {'-' * 50}\n".encode("utf-8"))
+                    log_event("SET_ROLE", username=target_user, extra_info=f"by={current_nick} new_role={new_role}")
+
                 else:
                     client.send(f"ERR INVALID_ROLE: Role '{new_role}' is invalid.\n".encode("utf-8"))
                     log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=SET_INVALID_ROLE new_role={new_role}")
