@@ -2,19 +2,34 @@ import threading
 import socket
 import sys
 import os
+import ssl
 
 PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PARENT_DIR not in sys.path:
     sys.path.append(PARENT_DIR)
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 from config import HOST,PORT
 from client_management.instructions import print_instructions
 from client_management.connection import receive, write, read_line
 
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+context.load_verify_locations(os.path.join(PARENT_DIR, "certs", "server.crt"))
+
+context.verify_mode = ssl.CERT_REQUIRED
+context.check_hostname = False
+context.check_hostname = False
+
 def main():
     """Connect using IPv4 and TCP"""
-    client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    client.connect((HOST, PORT))
+    raw_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+
+    try:
+        client = context.wrap_socket(raw_client, server_hostname=HOST)
+        client.connect((HOST, PORT))
+    except (ssl.SSLError, OSError) as e:
+        sys.exit(1)
+
     buffer = ""
 
     """Print Register/Login options"""
