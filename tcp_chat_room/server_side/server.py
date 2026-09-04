@@ -2,6 +2,7 @@ import threading
 import socket
 import os
 import sys
+import ssl
 
 PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PARENT_DIR not in sys.path:
@@ -9,28 +10,34 @@ if PARENT_DIR not in sys.path:
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 BAN_FILE_PATH = os.path.join(BASE_DIR, "data", "ban.txt")
+CERT_FILE_PATH = os.path.join(PARENT_DIR, "certs", "server.crt")
+KEY_FILE_PATH = os.path.join(PARENT_DIR, "certs", "server.key")
 
 from config import HOST, PORT
 from handlers.lock import state_lock
 from handlers.ban_handler import get_banned_users, add_ban, remove_ban
-from handlers.client_handler import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client
+from handlers.client_handler import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client, rekey_client_ip
 from auth.authentication import login, register, set_user_role
 from logs_management.record_logs import log_event, brute_force_detector, log_test_event
 from security.brute_force_detection import BruteForceDetector
 
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(certfile=CERT_FILE_PATH, keyfile=KEY_FILE_PATH)
+
 TEST_MODE = False  # Set to True to enable test mode for IP address overriding
 
 """Connect using IPv4 and TCP"""
-server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-server.bind((HOST, PORT))
-server.listen()
+raw_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+raw_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+raw_server_socket.bind((HOST, PORT))
+raw_server_socket.listen()
 
 def receive():
     """Receive message from clients"""
     while True:
         try:
-            client, address = server.accept()
+            raw_client, address = raw_server_socket.accept()
+
         except OSError:
             break
 
@@ -38,7 +45,19 @@ def receive():
         real_ip_addr = address[0]
         ip_addr = real_ip_addr
 
-        if not accept_new_client(client, real_ip_addr):
+        if not accept_new_client(raw_client, real_ip_addr):
+            continue
+
+        try:
+            client = context.wrap_socket(raw_client, server_side=True)
+            rekey_client_ip(raw_client, client)
+        except ssl.SSLError as e:
+            print(f"[TLS ERROR] SSL error occurred: {e}")
+            clean_up_client(raw_client, "TLS_HANDSHAKE_FAILED", client_ip=real_ip_addr)
+            continue
+        except OSError as e:
+            print(f"[ERROR] Socket error during TLS Handshake with {address}: {e}")
+            clean_up_client(raw_client, "SOCKET_ERROR", client_ip=real_ip_addr)
             continue
 
         log_event("USER_CONNECTED", ip=ip_addr)
@@ -229,7 +248,7 @@ def server_console_input():
 
 if __name__ == "__main__":
     try:
-        print(f"Server is running on {HOST}:{PORT}...")
+        print(f"[TLS SERVER] Listening on {HOST}:{PORT}...")
         console_threading = threading.Thread(target=server_console_input, daemon=True)
         console_threading.start()
         receive()
@@ -246,5 +265,5 @@ if __name__ == "__main__":
             nicknames.clear()
             user_sessions.clear()
 
-            server.close()
+            raw_server_socket.close()
             sys.exit()

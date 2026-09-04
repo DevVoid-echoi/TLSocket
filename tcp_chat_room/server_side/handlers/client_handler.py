@@ -20,6 +20,8 @@ user_sessions = {}
 
 ip_connection_counts = defaultdict(int)
 
+client_ips = {}
+
 def read_line(sock, buffer):
     """Read full-line messages"""
     while not "\n" in buffer:
@@ -33,6 +35,12 @@ def read_line(sock, buffer):
 
     line, buffer = buffer.split("\n", 1)
     return line.strip(), buffer
+
+def rekey_client_ip(old_sock, new_sock):
+    with ip_lock:
+        if old_sock in client_ips:
+            client_ip = client_ips.pop(old_sock)
+            client_ips[new_sock] = client_ip
 
 def accept_new_client(client_socket, client_ip):
     with ip_lock:
