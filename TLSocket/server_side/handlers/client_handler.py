@@ -1,7 +1,3 @@
-from server_side.handlers.lock import state_lock, ip_lock
-from server_side.handlers.ban_handler import add_ban, remove_ban
-from auth.rbac import has_permission, Permission
-from server_side.logs_management.record_logs import log_event
 from collections import defaultdict
 import os
 
@@ -10,8 +6,15 @@ SECURITY_DIR = os.path.join(BASE_DIR, "security")
 AUTH_DIR = os.path.join(BASE_DIR, "auth")
 CONFIG_FILE_PATH = os.path.join(BASE_DIR, "config.py")
 
+PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+from handlers.lock import state_lock, ip_lock
+from handlers.ban_handler import add_ban, remove_ban
+from logs_management.record_logs import log_event
+
 from security.validation import validate_message, parse_and_validate_command
 from auth.authentication import set_user_role
+from auth.rbac import has_permission, Permission
 from config import MAX_CONNECTIONS_PER_IP
 
 clients = []
@@ -21,6 +24,8 @@ user_sessions = {}
 ip_connection_counts = defaultdict(int)
 
 client_ips = {}
+
+pending_logins = set()
 
 def read_line(sock, buffer):
     """Read full-line messages"""
@@ -45,13 +50,10 @@ def rekey_client_ip(old_sock, new_sock):
 def accept_new_client(client_socket, client_ip):
     with ip_lock:
         if ip_connection_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
-            try:
-                client_socket.close()
-            except OSError:
-                pass
             return False
         
         ip_connection_counts[client_ip] += 1
+        client_ips[client_socket] = client_ip
         return True
 
 

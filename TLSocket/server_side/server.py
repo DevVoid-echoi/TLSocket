@@ -16,7 +16,7 @@ KEY_FILE_PATH = os.path.join(PARENT_DIR, "certs", "server.key")
 from config import HOST, PORT
 from handlers.lock import state_lock
 from handlers.ban_handler import get_banned_users, add_ban, remove_ban
-from handlers.client_handler import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client, rekey_client_ip
+from handlers.client_handler import clients, nicknames, read_line, broadcast, kick_user, handle_messages, clean_up_client, user_sessions, accept_new_client, rekey_client_ip, pending_logins
 from auth.authentication import login, register, set_user_role
 from logs_management.record_logs import log_event, brute_force_detector, log_test_event
 from security.brute_force_detection import BruteForceDetector
@@ -40,7 +40,6 @@ def handle_new_connection(raw_client, address):
     client = None
     try:
         client = context.wrap_socket(raw_client, server_side=True)
-        rekey_client_ip(raw_client, client)
     except ssl.SSLError as e:
         print(f"[TLS ERROR] SSL error occurred: {e}")
         clean_up_client(raw_client, "TLS_HANDSHAKE_FAILED", client_ip=real_ip_addr)
@@ -50,9 +49,16 @@ def handle_new_connection(raw_client, address):
         clean_up_client(raw_client, "SOCKET_ERROR", client_ip=real_ip_addr)
         return
     
-    if not accept_new_client(raw_client, real_ip_addr):
-        client.sendall("ERR CONNECTION_LIMIT_REACHED.\n".encode("utf-8"))
+    if not accept_new_client(client, real_ip_addr):
+        try:
+            client.sendall("ERR CONNECTION_LIMIT_REACHED.\n".encode("utf-8"))
+        except OSError as e:
+            pass
         log_event("CONNECTION_LIMIT_REACHED", extra_info=f"ip={real_ip_addr}")
+        try:
+            client.close()
+        except OSError as e:
+            pass
         return
 
     log_event("USER_CONNECTED", ip=ip_addr)
@@ -60,6 +66,8 @@ def handle_new_connection(raw_client, address):
     try:
         buffer = ""
         session = None
+
+        reserved_username = None
 
         # --- AUTHENTICATION ---
         while not session:
@@ -94,27 +102,41 @@ def handle_new_connection(raw_client, address):
 
                     # Check whether the username has been used
                     with state_lock:
-                        if username in nicknames:
+                        if username in nicknames or username in pending_logins:
                             already_online = True
-                    
+                        else:
+                            already_online = False
+                            pending_logins.add(username)
+                            reserved_username = username
+
                     if already_online:
                         client.sendall("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
+                        reserved_username = None
                         continue
 
                     success, user_session = login(username, password)
                     if success and user_session:
                         if username in get_banned_users():
+                            with state_lock:
+                                pending_logins.discard(reserved_username)
+                            reserved_username = None
                             client.sendall("ERR BANNED\n".encode('utf-8'))
                             log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                             continue
                         session = user_session
                         log_event("LOGIN_SUCCESS", username=username, ip=ip_addr)
                     elif success and not user_session:
+                        with state_lock:
+                            pending_logins.discard(reserved_username)
+                        reserved_username = None
                         client.sendall("ERR BANNED\n".encode('utf-8'))
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                         continue
                     else:
+                        with state_lock:
+                            pending_logins.discard(reserved_username)
+                        reserved_username = None
                         client.sendall("ERR WRONG_AUTH\n".encode("utf-8")) # Decline due to wrong information
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
                         continue
@@ -156,6 +178,8 @@ def handle_new_connection(raw_client, address):
             clients.append(client)
             nicknames.append(nickname)
             user_sessions[client] = session
+            pending_logins.discard(nickname)
+            reserved_username = None
 
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")
@@ -173,6 +197,11 @@ def handle_new_connection(raw_client, address):
         except:
             pass
         return
+
+    finally:
+        if reserved_username is not None:
+            with state_lock:
+                pending_logins.discard(reserved_username)
 
 def receive():
     while True:
