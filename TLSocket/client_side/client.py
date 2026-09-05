@@ -28,6 +28,7 @@ def main():
         client = context.wrap_socket(raw_client, server_hostname=HOST)
         client.connect((HOST, PORT))
     except (ssl.SSLError, OSError) as e:
+        print(f"Connection error: {e}")
         sys.exit(1)
 
     buffer = ""

@@ -12,7 +12,7 @@ from brute_force_detection import BruteForceDetector
 """
 
 def analyze(records: Iterable[LogRecord]) -> dict:
-    "Phân tích các bản ghi log và trả về thống kê"
+    """Analyze log files and return statistics."""
     total = 0
     error_count = 0
     warning_count = 0
@@ -21,6 +21,8 @@ def analyze(records: Iterable[LogRecord]) -> dict:
     banned_users_count = 0
     kicked_users_count = 0
     suspicious_ips = defaultdict(int)
+    brute_force_detector = False
+    ddos_detector = False
 
     ip_count = Counter()
 
@@ -48,8 +50,11 @@ def analyze(records: Iterable[LogRecord]) -> dict:
         if event == "BAN":
             banned_users_count += 1
         if event in["RATE_LIMIT_EXCEEDED", "[ALERT] BRUTE_FORCE_ATTEMPT"]:
+            brute_force_detector = True
             suspicious_ips[r.ip] += 1
-        
+        if event in ["CONNECTION_LIMIT_REACHED"]:
+            ddos_detector = True
+            suspicious_ips[r.ip] += 1
         """
         latency_count[r.path] += 1
         latency_sum[r.path] += r.latency_ms
@@ -79,5 +84,7 @@ def analyze(records: Iterable[LogRecord]) -> dict:
         "error_rate": error_rate,
         "warning": warning_count,
         "top_5_IPs": ip_count.most_common(5),
-        "suspicious_ips": dict(suspicious_ips)
+        "suspicious_ips": dict(suspicious_ips),
+        "brute_force_alert": brute_force_detector,
+        "ddos_alert": ddos_detector
     }

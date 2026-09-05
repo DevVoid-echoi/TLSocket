@@ -45,6 +45,8 @@ def main() -> int:
     warning = results["warning"]
     top_5_IPs = results["top_5_IPs"]
     suspicious_ips = results["suspicious_ips"]
+    brute_force_alert = results["brute_force_alert"]
+    ddos_alert = results["ddos_alert"]
 
     print("\n" + "=" * 50)
     if os.path.exists(LOG_PATH):
@@ -97,10 +99,16 @@ def main() -> int:
         print(f"{ip}: {count}")
     print("=" * 50)
 
-    if warning > 0:
+    if brute_force_alert:
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         print("\033[91m" + "=" * 50)
-        print(f"[{now_str}] [ALERT] Security warnings/brute-force events detected ({warning} total)!")
+        print(f"[{now_str}] [ALERT] Brute-force events detected!")
+        print("=" * 50 + "\033[0m")
+
+    if ddos_alert:
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print("\033[91m" + "=" * 50)
+        print(f"[{now_str}] [ALERT] DDoS events detected!")
         print("=" * 50 + "\033[0m")
 
     """
@@ -122,8 +130,9 @@ def main() -> int:
             "error_rate": error_rate,
             "warning": warning,
             "top_5_IPs": top_5_IPs,
-            "brute_force_alert": warning > 0,
-            "suspicious_IPs": suspicious_ips 
+            "suspicious_IPs": suspicious_ips ,
+            "brute_force_alert": brute_force_alert,
+            "ddos_alert": ddos_alert
         }
 
         with open(args.output, "w", encoding="utf-8") as f:

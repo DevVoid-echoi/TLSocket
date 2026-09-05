@@ -73,7 +73,7 @@ def log_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra
         elif event_type in ["SET", "KICK", "BAN", "UNBAN"]:
             security_logger.info(msg)
             security_file_handler.flush()
-        elif event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED"]:
+        elif event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED"]:
             security_logger.warning(msg)
             security_file_handler.flush()
 
@@ -82,7 +82,7 @@ def log_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra
         date=now.strftime("%Y-%m-%d"),
         time=now.strftime("%H:%M:%S"),
         event_type=event_type,
-        level="WARNING" if event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED"] else "INFO",
+        level="WARNING" if event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED"] else "INFO",
         username=username,
         ip=ip,
         extra_info=extra_info

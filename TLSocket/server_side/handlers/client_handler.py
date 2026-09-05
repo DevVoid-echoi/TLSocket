@@ -46,11 +46,9 @@ def accept_new_client(client_socket, client_ip):
     with ip_lock:
         if ip_connection_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
             try:
-                client_socket.send("ERR CONNECTION_LIMIT_REACHED.\n".encode("utf-8"))
                 client_socket.close()
             except OSError:
                 pass
-            log_event("CONNECTION_LIMIT_REACHED", extra_info=f"ip={client_ip}")
             return False
         
         ip_connection_counts[client_ip] += 1
