@@ -1,143 +1,152 @@
-```markdown
-# Multi-Threaded TCP Chat System with RBAC & Security Logging
+# TLSocket — Multi-Threaded TLS Chat System with RBAC & Security Logging
 
-A multi-threaded Client-Server chat system built using Python Pure-Sockets. The project focuses on a security-centric architecture featuring user authentication, Role-Based Access Control (RBAC), real-time administrative management via Server Console, production-ready security logging, and an integrated log parsing module for security analysis.
-
----
-
-## 🌟 Key Features
-
-* **Multi-Threaded Architecture**: Handles concurrent client connections using `socket` and `threading` with thread-safe synchronization locks (`state_lock`).
-* **Authentication & Session Management**: Secure user registration and login with password hashing (Bcrypt/SHA-256) and active session management (`user_sessions`).
-* **Role-Based Access Control (RBAC)**: Flexible command execution rights (`/kick`, `/ban`, `/unban`) governed by user roles (`admin`, `moderator`, `user`).
-* **Server Console Control**: Allows administrators to dynamically assign roles (`/set <username> <role>`) directly from the server terminal in real time.
-* **Real-time Session Synchronization**: Automatically syncs role updates from persistent storage (`user.json`) directly to active client RAM sessions without requiring a reconnect.
-* **Security & System Logging**: Separates operational logs (`server.log`) and security audit logs (`security.log`) with automatic disk flushing (`flush`). Passwords are never stored in plain-text.
-* **Log Parser & Analytics Engine**: Includes a generator-based (`yield`) stream parser and analytics engine (`log_parser`) to parse security events, track failed login attempts, calculate error rates, and identify top requesting IP addresses.
+A multi-threaded client/server chat system built on Python's standard library
+(`socket`, `ssl`, `threading`). The focus is a security-centric architecture:
+TLS-encrypted transport, user authentication, Role-Based Access Control (RBAC),
+real-time administrative control from the server console, structured security
+logging, brute-force / connection-flood detection, and an offline log-analysis
+module.
 
 ---
 
-## 📁 Project Structure
+## Key Features
+
+* **TLS transport** — every client/server connection is wrapped in `ssl` using
+  the certificate in `certs/`.
+* **Multi-threaded server** — one thread per client, with `threading.Lock`
+  (`state_lock`, `ip_lock`) guarding shared state.
+* **Authentication** — registration and login with salted SHA-256 password
+  hashing; in-RAM session objects (`user_sessions`).
+* **RBAC** — `admin`, `moderator`, `user` roles gate `/kick`, `/ban`, `/unban`,
+  `/set` (see `auth/rbac.py`).
+* **Server console** — the server operator can run `/set`, `/kick`, `/ban`,
+  `/unban` directly from the server terminal; role changes are pushed to live
+  client sessions without a reconnect.
+* **Brute-force & flood protection** — repeated failed logins from an IP trigger
+  an escalating temporary block (`security/brute_force_detection.py`); per-IP
+  connection caps (`MAX_CONNECTIONS_PER_IP`) limit connection floods.
+* **Structured logging** — operational events go to `logs/server.log`, security
+  events to `logs/security.log`, brute-force alerts to `logs/alerts.log`.
+* **Log analysis** — `log_parser/` streams a log file and reports login stats,
+  error rate, top IPs, and suspicious / brute-force / DDoS indicators.
+
+---
+
+## Project Structure
 
 ```text
-tcp_chat_room/
+src/tlsocket/
+├── config.py                     # HOST/PORT, limits, thresholds, runtime file paths
 ├── auth/
-│   ├── authentication.py    # Handles login, registration, password hashing, set_user_role
-│   ├── password.py          # Password hashing and verification utilities
-│   └── rbac.py              # Role & Permission definitions (ADMIN, MODERATOR, USER)
+│   ├── authentication.py         # register / login / set_user_role, password hashing
+│   ├── password.py               # (constants)
+│   └── rbac.py                   # Permission + ROLES_PERMISSIONS, has_permission()
+├── security/
+│   ├── validation.py             # nickname / message / command validation
+│   ├── brute_force_detection.py  # BruteForceDetector (stateful, persisted to data/)
+│   └── logger.py                 # alert logger
 ├── client_side/
-│   ├── client_management/    
-│   │   ├── connection.py    # Client-side TCP socket connection management
-│   │   └── instruction.py   # Dynamic command line instructions based on user role
-│   └── client.py            # Client entry point
-├── data/
-│   ├── ban.txt              # Database for banned user accounts
-│   └── user.json            # Database for user credentials & RBAC roles
-├── log_parser/              # Security Log Parsing & Analytics Module
-│   └── src/
-│       ├── analyzer.py      # Aggregates log metrics (failed logins, error rates, top IPs)
-│       ├── main.py          # Entry point for running log analysis reports
-│       ├── models.py        # LogRecord dataclass definition
-│       └── parser.py        # Stream-based log parser using generator-based yield
-├── logs/
-│   ├── security.log         # Security events: logins, permission violations, KICK/BAN/UNBAN
-│   └── server.log           # Operational logs: connections, disconnections, system events
+│   ├── client.py                 # client entry point (tlsocket-client)
+│   └── client_management/
+│       ├── connection.py         # receive / write loops, read_line
+│       └── instructions.py       # role-aware help text
 ├── server_side/
-│   ├── client_management/
-│   │   ├── actions.py       # Message routing and command execution (KICK, BAN, UNBAN)
-│   │   ├── ban_handler.py   # Reads and writes banned user lists
-│   │   └── lock.py          # Thread lock preventing race conditions (state_lock)
-│   ├── logs_management/
-│   │   └── record_logs.py   # Log initialization and recording module
-│   └── server.py            # Main entry point for TCP Server & Console Thread
-├── config.py                # Configuration parameters: PORT, HOST, and file paths
-└── README.md                # Project documentation
+│   ├── server.py                 # server entry point (tlsocket-server) + console thread
+│   ├── handlers/
+│   │   ├── client_handler.py     # client registry, broadcast, message loop, cleanup
+│   │   ├── ban_handler.py        # ban-list file I/O
+│   │   └── lock.py               # shared locks
+│   └── logs_management/
+│       └── record_logs.py        # log_event(), logger setup
+└── log_parser/
+    ├── main.py                   # CLI entry point (tlsocket-analyze)
+    ├── parser.py                 # stream parser (generator)
+    ├── analyzer.py               # aggregation
+    └── models.py                 # LogRecord dataclass
 
+tests/                            # brute-force / DDoS simulation scripts
+data/                             # user.json, ban.txt, brute_force_state.json (gitignored)
+certs/                            # server.crt / server.key (gitignored)
+logs/                             # *.log (gitignored)
 ```
 
----
-
-## 🛠️ Commands & Syntax
-
-### 1. Server Console (Executed directly from the Server Terminal)
-
-* `/set <username> <role>`: Assigns a new role to a user (`admin`, `moderator`, `user`).
-
-### 2. Client Chat Room
-
-* `/quit` or `/exit`: Disconnects and exits the chat room.
-* `/kick <username>`: Removes a user from the chat room *(Requires KICK permission)*.
-* `/ban <username>`: Permanently bans a user from joining *(Requires BAN permission)*.
-* `/unban <username>`: Lifts a ban for a specified user *(Requires UNBAN permission)*.
+Runtime files are resolved relative to the current working directory. Override
+with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
+`TLSOCKET_CERT_FILE` / `TLSOCKET_KEY_FILE`), plus `TLSOCKET_HOST` /
+`TLSOCKET_PORT`. See `.env.example`.
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
-* **Python 3.10+** (Built using Python standard libraries; no external package dependencies required).
+* Python 3.10+ (developed on 3.12). Runtime is standard library only.
+* A TLS key pair. To generate a self-signed pair for local use:
 
-### Step 1: Launch the Server
+  ```bash
+  mkdir -p certs
+  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
+    -keyout certs/server.key -out certs/server.crt -subj "/CN=localhost"
+  ```
 
-Open a terminal in the project root directory (`tcp_chat_room`):
+### Install
 
 ```bash
-python3 server_side/server.py
-
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 ```
 
-### Step 2: Launch the Client
-
-Open another terminal window and run:
+### Run the server
 
 ```bash
-python3 client_side/client.py
-
+tlsocket-server
 ```
 
-### Step 3: Run Security Log Analysis
-
-To parse and generate a statistical report from `logs/security.log`, execute:
+### Run a client (separate terminal)
 
 ```bash
-python3 log_parser/src/main.py logs/security.log
+tlsocket-client
+```
 
+### Analyze the logs
+
+```bash
+tlsocket-analyze -f security         # or: -f server
+tlsocket-analyze -f security -o report.json
 ```
 
 ---
 
-## 📝 Security Log & Parser Output Format
+## Commands
 
-### 1. Log Event Format (`logs/security.log`)
+### Server console (typed into the server terminal)
+
+| Command | Effect |
+| --- | --- |
+| `/set <username> <role>` | Assign `admin` / `moderator` / `user` |
+| `/kick <username>` | Disconnect an online user |
+| `/ban <username>` | Add to ban list and disconnect if online |
+| `/unban <username>` | Remove from ban list |
+
+### Client chat room
+
+| Command | Permission | Effect |
+| --- | --- | --- |
+| `/quit`, `/exit` | — | Leave the chat |
+| `/kick <username>` | KICK | Remove a user |
+| `/ban <username>` | BAN | Ban a user |
+| `/unban <username>` | UNBAN | Lift a ban |
+| `/set <username> <role>` | SET | Change a user's role |
+
+Anything else typed is sent as a chat message.
+
+---
+
+## Log Format
 
 ```text
-2026-08-27 15:00:10 INFO USER_CONNECTED username=N/A ip=127.0.0.1
 2026-08-27 15:00:15 INFO LOGIN_SUCCESS username=alice ip=127.0.0.1
 2026-08-27 15:00:22 WARNING LOGIN_FAILED username=bob ip=127.0.0.1
 2026-08-27 15:01:05 WARNING KICK username=spammer by=admin
-2026-08-27 15:01:10 WARNING BAN username=spammer by=admin
-
-```
-
-### 2. Log Parser Analytics Report (`log_parser`)
-
-```json
-{
-  "total_requests": 5,
-  "successful_logins": 1,
-  "failed_logins": 1,
-  "kicked_users": 1,
-  "banned_users": 1,
-  "error_count": 0,
-  "error_rate": 0.0,
-  "top_5_IPs": [
-    ["127.0.0.1", 2]
-  ]
-}
-
-```
-
-```
-
 ```

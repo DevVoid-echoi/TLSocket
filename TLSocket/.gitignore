@@ -1,2 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtualenv
+.venv/
+venv/
+
+# Runtime state / logs / TLS material
+data/
 logs/
 certs/
+
+# Secrets (was previously ignored via src/tlsocket/auth/.gitignore)
+src/tlsocket/auth/password.py
+
+# OS
+.DS_Store
