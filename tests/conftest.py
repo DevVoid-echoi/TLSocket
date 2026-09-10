@@ -38,7 +38,7 @@ def pytest_sessionfinish(session, exitstatus):
 
 @pytest.fixture
 def data_dir() -> Path:
-    return __DATA
+    return _DATA
 
 @pytest.fixture
 def clean_data_dir(data_dir):
