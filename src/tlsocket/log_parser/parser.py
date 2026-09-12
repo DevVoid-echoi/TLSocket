@@ -45,7 +45,7 @@ def parse_line(line: str) -> Optional[LogRecord]:
             elif key == "ip":
                 ip = value
             else:
-                extra_info_list.append(f"{key} = {value}")
+                extra_info_list.append(f"{key}={value}")
         else:
             extra_info_list.append(kv)
 

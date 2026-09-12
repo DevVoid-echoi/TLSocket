@@ -79,7 +79,7 @@ def analyze(records: Iterable[LogRecord]) -> dict:
         "error_rate": error_rate,
         "warning": warning_count,
         "top_5_IPs": ip_count.most_common(5),
-        "suspicious_ips": dict(suspicious_ips),
+        "suspicious_IPs": dict(suspicious_ips),
         "brute_force_alert": brute_force_detector,
         "ddos_alert": ddos_detector
     }

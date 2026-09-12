@@ -17,5 +17,12 @@ certs/
 # Secrets (was previously ignored via src/tlsocket/auth/.gitignore)
 src/tlsocket/auth/password.py
 
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # OS
 .DS_Store

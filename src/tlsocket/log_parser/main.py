@@ -42,7 +42,7 @@ def main() -> int:
     error_rate = results["error_rate"]
     warning = results["warning"]
     top_5_IPs = results["top_5_IPs"]
-    suspicious_ips = results["suspicious_ips"]
+    suspicious_ips = results["suspicious_IPs"]
     brute_force_alert = results["brute_force_alert"]
     ddos_alert = results["ddos_alert"]
 

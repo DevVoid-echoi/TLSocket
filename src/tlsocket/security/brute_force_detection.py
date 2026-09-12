@@ -49,7 +49,6 @@ class BruteForceDetector:
 
                 for ip, unblock_time_str in data.get("blocked_ips", {}).items():
                     self.blocked_ips[ip] = datetime.strptime(unblock_time_str, "%Y-%m-%d %H:%M:%S")
-
             except Exception as e:
                 print(f"[ERROR] Failed to load state from {self.db_file}: {e}")
 
