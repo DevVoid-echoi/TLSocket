@@ -33,9 +33,11 @@ if not _CRT.exists():
         subprocess.run(
             ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
              "-days", "1", "-keyout", str(_KEY), "-out", str(_CRT),
-             "-subj", "/CN=localhost"],
+             "-subj", "/CN=localhost",
+             "-addext", "subjectAltName=DNS:localhost,IP:127.0.0.1"],
             check=True, capture_output=True,
         )
+
     except (FileNotFoundError, subprocess.CalledProcessError) as e:
         print(f"[conftest] Không tạo được TLS cert cho test ({e}); "
               f"unit test thuần logic vẫn chạy bình thường, "
@@ -50,7 +52,7 @@ def pytest_sessionfinish(session, exitstatus):
 def data_dir() -> Path:
     return _DATA
 
-           
+
 
 
 

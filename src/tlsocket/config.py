@@ -16,6 +16,8 @@ def _dir(env: str, default: str) -> Path:
 HOST = os.environ.get("TLSOCKET_HOST", "0.0.0.0")  # bind/connect address
 PORT = int(os.environ.get("TLSOCKET_PORT", "9999"))
 
+CLIENT_HOST = os.environ.get("TLSOCKET_CLIENT_HOST", "localhost")
+
 MAX_LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW = 60
 BLOCK_DURATION = 10

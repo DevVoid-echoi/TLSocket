@@ -71,7 +71,7 @@ def make_client(running_server):
     port = running_server
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.load_verify_locations(str(CERT_FILE))
-    ctx.check_hostname = False
+    ctx.check_hostname = True
     ctx.verify_mode = ssl.CERT_REQUIRED
     opened = []
 
