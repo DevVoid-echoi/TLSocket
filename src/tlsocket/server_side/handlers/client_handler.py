@@ -5,7 +5,7 @@ from tlsocket.auth.rbac import Permission, has_permission
 from tlsocket.config import MAX_CONNECTIONS_PER_IP
 from tlsocket.security.validation import parse_and_validate_command, validate_message
 from tlsocket.server_side.handlers.ban_handler import add_ban, remove_ban
-from tlsocket.server_side.handlers.lock import ip_lock, state_lock
+from tlsocket.server_side.handlers.lock import ip_lock, send_lock, state_lock
 from tlsocket.server_side.logs_management.record_logs import log_event
 
 clients = []
@@ -93,7 +93,8 @@ def broadcast(message, sender=None):
     for client in targets:
         if client != sender:
             try:
-                client.sendall(message) # Send the message to all users except for the sender
+                with send_lock:
+                    client.sendall(message) # Send the message to all users except for the sender
             except (BrokenPipeError, ConnectionResetError, OSError) as e:
                 print(f"Error sending message: {e}")
                 disconnected_clients.append(client) # Disconnect the user if get an error while sending the message
@@ -113,7 +114,8 @@ def kick_user(name):
     if client_to_kick:
         try:
             # Print the kick announcement and close the connection of the kicked user
-            client_to_kick.send("MSG You were kicked!\n".encode("utf-8"))
+            with send_lock:
+                client_to_kick.send("MSG You were kicked!\n".encode("utf-8"))
             client_to_kick.close()
         except Exception:
             pass

@@ -286,22 +286,31 @@ def server_console_input():
         except (EOFError, KeyboardInterrupt):
             break
 
-def main():
+def create_server(host: str | None = None, port: int | None = None):
     global context, raw_server_socket
-
+    
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain(certfile=str(CERT_FILE), keyfile=str(KEY_FILE))
-
+    
     raw_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     raw_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    raw_server_socket.bind((HOST, PORT))
+    raw_server_socket.bind((host if host is not None else HOST,
+                            port if port is not None else PORT))
     raw_server_socket.listen()
+    actual_port = raw_server_socket.getsockname()[1]
 
+    accept_thread = threading.Thread(target=receive, daemon=True)
+    accept_thread.start()
+    return accept_thread, raw_server_socket, actual_port
+
+
+
+def main():
+    thread, sock, port = create_server()
+    print(f"[TLS SERVER] Listening on {HOST}:{port}...")
+    threading.Thread(target=server_console_input, daemon=True).start()
     try:
-        print(f"[TLS SERVER] Listening on {HOST}:{PORT}...")
-        console_threading = threading.Thread(target=server_console_input, daemon=True)
-        console_threading.start()
-        receive()
+        thread.join()
     except KeyboardInterrupt:
         print("\nServer is shutting down...")
         with state_lock:
@@ -315,7 +324,7 @@ def main():
             nicknames.clear()
             user_sessions.clear()
 
-            raw_server_socket.close()
+            sock.close()
             sys.exit()
 
 
