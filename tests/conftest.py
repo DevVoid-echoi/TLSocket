@@ -22,33 +22,33 @@ os.environ["TLSOCKET_CERT_DIR"] = str(_CERTS)
 os.environ["TLSOCKET_HOST"] = "127.0.0.1"
 os.environ["TLSOCKET_PORT"] = "0" # Để OS chọn cổng trống
 
-# Tạo cặp cert self_signed 1 lần cho cả phiên test
+# Tạo cặp cert self-signed 1 lần cho cả phiên test. Chỉ integration test (GĐ 3)
+# mới cần cert thật; bọc try/except để máy/CI thiếu `openssl` vẫn chạy được
+# toàn bộ unit test thuần logic (validation, rbac, ...) - chỉ integration
+# test mới fail (và fail rõ ràng, thay vì sập cả suite ngay lúc collection).
 _CRT = _CERTS / "server.crt"
 _KEY = _CERTS / "server.key"
 if not _CRT.exists():
-    subprocess.run(
-        ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
-         "-days", "1", "-keyout", str(_KEY), "-out", str(_CRT),
-         "-subj", "/CN=localhost"],
-         check=True, capture_output=True,
-    )
+    try:
+        subprocess.run(
+            ["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+             "-days", "1", "-keyout", str(_KEY), "-out", str(_CRT),
+             "-subj", "/CN=localhost"],
+            check=True, capture_output=True,
+        )
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
+        print(f"[conftest] Không tạo được TLS cert cho test ({e}); "
+              f"unit test thuần logic vẫn chạy bình thường, "
+              f"integration test cần TLS sẽ fail.")
+
 
 def pytest_sessionfinish(session, exitstatus):
     shutil.rmtree(_TMP_ROOT, ignore_errors=True)
 
+
 @pytest.fixture
 def data_dir() -> Path:
     return _DATA
-
-@pytest.fixture
-def clean_data_dir(data_dir):
-    """Xoá sạch data/ trước mỗi test dùng fixture này."""
-    for f in data_dir.iterdir():
-        f.unlink()
-    yield data_dir
-
-
-
 
            
 

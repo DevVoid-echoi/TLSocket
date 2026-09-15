@@ -32,7 +32,17 @@ def _save_users(users):
         json.dump(users, f, indent=4)
 
 def _hash_password(password:str)->str:
-    """Hash password with SHA-256 and salt"""
+    """Hash password with SHA-256 and salt
+
+    SECURITY DEBT: the salt is a single hard-coded constant shared by every
+    user, not a per-user random salt. Two users with the same password get
+    the exact same password_hash (visible to anyone who reads user.json),
+    and a single precomputed table for this one salt cracks every account
+    at once. SHA-256 is also unsalted-per-user and fast, unlike a proper
+    password KDF (bcrypt/scrypt/PBKDF2/argon2). Fixing this changes the
+    stored hash format and needs a migration path for existing user.json
+    entries - tracked as a follow-up, not fixed here.
+    """
     salt = "tcp_chat_room_salt_2026"
     return hashlib.sha256((password + salt).encode("utf-8")).hexdigest()
 

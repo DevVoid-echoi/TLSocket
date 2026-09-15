@@ -44,10 +44,12 @@ def analyze(records: Iterable[LogRecord]) -> dict:
             banned_users_count += 1
         if event in["RATE_LIMIT_EXCEEDED", "[ALERT] BRUTE_FORCE_ATTEMPT"]:
             brute_force_detector = True
-            suspicious_ips[r.ip] += 1
+            if r.ip and r.ip != "N/A":
+                suspicious_ips[r.ip] += 1
         if event in ["CONNECTION_LIMIT_REACHED"]:
             ddos_detector = True
-            suspicious_ips[r.ip] += 1
+            if r.ip and r.ip != "N/A":
+                suspicious_ips[r.ip] += 1
         """
         latency_count[r.path] += 1
         latency_sum[r.path] += r.latency_ms

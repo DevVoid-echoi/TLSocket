@@ -88,6 +88,9 @@ def test_verify_password_matches_correct_password():
     assert auth.verify_password(stored_harsh, "wrong") is False
 
 def test_same_password_hash_the_same():
+    """Đóng đinh hành vi HIỆN TẠI, không phải hành vi nên có: salt cố định
+    dùng chung cho mọi user là một điểm yếu bảo mật thật (xem SECURITY DEBT
+    trong _hash_password) - test này sẽ phải sửa cùng lúc với việc vá salt."""
     auth.register("alice", "pw123")
     auth.register("bob", "pw123")
     users = json.loads(auth.USERS_FILE.read_text())

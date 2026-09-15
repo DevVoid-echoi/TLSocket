@@ -59,6 +59,13 @@ def test_analyze_flags_ddos():
     result = analyze([_rec("CONNECTION_LIMIT_REACHED", ip="9.9.9.9")])
     assert result["ddos_alert"] is True
 
+def test_analyze_brute_force_alert_without_ip_not_counted_as_suspicious():
+    """brute_force_alert vẫn bật (đúng), nhưng "N/A" không được tính là 1 IP
+    đáng ngờ trong suspicious_IPs - tránh gây hiểu nhầm khi đọc report."""
+    result = analyze([_rec("RATE_LIMIT_EXCEEDED", ip="N/A")])
+    assert result["brute_force_alert"] is True
+    assert result["suspicious_IPs"] == {}
+
 def test_analyze_no_false_alerts_on_normal_traffic():
     result = analyze([_rec("LOGIN_SUCCESS", ip="1.1.1.1")])
     assert result["brute_force_alert"] is False
