@@ -1,0 +1,71 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tlsocket"
+version = "0.1.0"
+description = "Secure socket library with TLS and authentication utilities"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "pytest-timeout>=2.3"]
+
+[project.scripts]
+tlsocket-server = "tlsocket.server_side.server:main"
+tlsocket-client = "tlsocket.client_side.client:main"
+tlsocket-analyze = "tlsocket.log_parser.main:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tlsocket"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B"]
+# E501 (line-too-long) tắt: dự án không dùng `ruff format`/black để tự xuống
+# dòng, và nhiều chuỗi log/giao thức mô tả dài hơn mọi ngưỡng hợp lý - sửa
+# tay dễ gõ nhầm chính xác nội dung giao thức (đổi câu chữ 1 dòng phản hồi
+# là phá tương thích với client). line-length vẫn giữ làm mốc tham khảo
+# cho code mới.
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+ignore_missing_imports = true
+mypy_path = "src"
+
+[tool.coverage.run]
+source = ["tlsocket"]
+branch = true
+omit = [
+    "*/client_side/*",       # code tương tác qua input()/stdout - không unit test có ý nghĩa
+    "*/log_parser/main.py",  # CLI entry point (argparse + print), test qua smoke test riêng nếu cần
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__ == .__main__.:",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = "-ra --strict-markers --strict-config"
+markers = [
+    "integration: cần khởi động server thật qua socket (chậm hơn)"
+]
+timeout = 30
