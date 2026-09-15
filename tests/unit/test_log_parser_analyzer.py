@@ -1,7 +1,8 @@
 import pytest
 
-from tlsocket.log_parser.models import LogRecord
 from tlsocket.log_parser.analyzer import analyze
+from tlsocket.log_parser.models import LogRecord
+
 
 def _rec(event_type, ip="N/A", level="INFO"):
     return LogRecord(date="2026-01-01", time="00:00:00", level=level,
@@ -64,6 +65,12 @@ def test_analyze_brute_force_alert_without_ip_not_counted_as_suspicious():
     đáng ngờ trong suspicious_IPs - tránh gây hiểu nhầm khi đọc report."""
     result = analyze([_rec("RATE_LIMIT_EXCEEDED", ip="N/A")])
     assert result["brute_force_alert"] is True
+    assert result["suspicious_IPs"] == {}
+
+def test_analyze_ddos_alert_without_ip_not_counted_as_suspicious():
+    """Cùng guard như trên nhưng ở nhánh CONNECTION_LIMIT_REACHED (DDoS)."""
+    result = analyze([_rec("CONNECTION_LIMIT_REACHED", ip="N/A")])
+    assert result["ddos_alert"] is True
     assert result["suspicious_IPs"] == {}
 
 def test_analyze_no_false_alerts_on_normal_traffic():

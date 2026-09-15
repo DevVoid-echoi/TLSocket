@@ -15,9 +15,9 @@ def simulate_brute_force(fake_ip: str, attempts: int = 6):
     """
     Simulate a brute-force attack by sending multiple failed login attempts from a fake IP address.
     """
-    print(f"\n==========================================")
+    print("\n==========================================")
     print(f"[TEST] Simulate a brute-force attack from ip: {fake_ip}")
-    print(f"==========================================")
+    print("==========================================")
 
     for i in range(1, attempts + 1):
         try:
@@ -27,13 +27,13 @@ def simulate_brute_force(fake_ip: str, attempts: int = 6):
             # Wrap the socket with SSL
             tls_sock = context.wrap_socket(sock, server_hostname=HOST)
 
-            tls_sock.send(f"CLIENT_IP {fake_ip}\n".encode("utf-8"))
+            tls_sock.send(f"CLIENT_IP {fake_ip}\n".encode())
             
             time.sleep(0.05)
 
-            fake_user = f"victim_user"
+            fake_user = "victim_user"
             fake_pass = f"wrong_password_{i}"
-            tls_sock.send(f"LOGIN {fake_user} {fake_pass}\n".encode("utf-8"))
+            tls_sock.send(f"LOGIN {fake_user} {fake_pass}\n".encode())
 
             response = tls_sock.recv(1024).decode("utf-8").strip()
             print(f" -> Lần {i}: Server phản hồi => {response}")

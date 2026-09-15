@@ -1,7 +1,5 @@
 import socket
 import ssl
-import threading
-import time
 
 import pytest
 
@@ -15,7 +13,6 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def running_server(tmp_path, monkeypatch):
     from tlsocket.auth import authentication as auth
-    from tlsocket.server_side.handlers import ban_handler
 
     users_file = tmp_path / "user.json"
     ban_file = tmp_path / "ban.txt"

@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-from typing import Iterable, Optional
+from collections.abc import Iterable
+from pathlib import Path
 
 from tlsocket.log_parser.models import LogRecord
 
 
-def iter_record(log_file: str) -> Iterable[LogRecord]:
+def iter_record(log_file: str | Path) -> Iterable[LogRecord]:
     "Đọc từng dòng trong file log và trả về các bản ghi log hợp lệ"
-    with open(log_file, "r", encoding="utf-8") as f:
+    with open(log_file, encoding="utf-8") as f:
         for line in f:
             rec = parse_line(line)
             if rec is not None:
                 yield rec
 
-def parse_line(line: str) -> Optional[LogRecord]:
+def parse_line(line: str) -> LogRecord | None:
     "Phân tích một dòng log và trả về bản ghi log nếu hợp lệ"
     line = line.strip()
     if not line or line.startswith("#"):

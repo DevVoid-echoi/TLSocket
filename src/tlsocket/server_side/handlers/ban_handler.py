@@ -5,7 +5,7 @@ def get_banned_users():
     """Read the ban file for banned users"""
     if not BAN_FILE_PATH.exists():
         return []
-    with open(BAN_FILE_PATH, 'r', encoding="utf-8") as f:
+    with open(BAN_FILE_PATH, encoding="utf-8") as f:
         return [line.strip().lower() for line in f.readlines() if line.strip()]
 
 def add_ban(nickname):

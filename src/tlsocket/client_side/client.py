@@ -41,7 +41,7 @@ def main():
         """Send LOGIN request and check received message to see if user successfully loginned"""
         if choice == "1":
             try:
-                client.send(f"LOGIN {username} {password}\n".encode("utf-8"))
+                client.send(f"LOGIN {username} {password}\n".encode())
                 line, buffer = read_line(client, buffer)
                 if line is None: # Close connection if not receive any message
                     print(">> Server closed connection during registration.")
@@ -68,7 +68,7 @@ def main():
         """Send REGISTER request and check received message to see if user successfully registered"""
         if choice == "2":
             try:
-                client.send(f"REGISTER {username} {password}\n".encode("utf-8"))
+                client.send(f"REGISTER {username} {password}\n".encode())
                 line, buffer = read_line(client, buffer)
                 if line is None:# Close connection if not receive any message
                     print(">> Server closed connection during registration.")
@@ -76,7 +76,7 @@ def main():
                     sys.exit(1)
 
                 print(f">> Phản hồi đăng ký: {line}")# Print the register announcement
-            except Exception as e:
+            except Exception:
                 print("Error during registration.")
                 client.close()
                 sys.exit(1)

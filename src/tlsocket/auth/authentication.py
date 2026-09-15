@@ -1,31 +1,33 @@
 import hashlib
 import json
 import os
+from typing import Any
 
 from tlsocket.config import BAN_FILE, USERS_FILE
 from tlsocket.security.validation import validate_nickname
 
 
-def _load_users():
+def _load_users() -> dict[str, Any]:
     """Read accounts from JSON file"""
     if not os.path.exists(USERS_FILE):
         return{}
     try:
-        with open(USERS_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
+        with open(USERS_FILE, encoding="utf-8") as f:
+            data: dict[str, Any] = json.load(f)
+            return data
     except Exception:
         return {}
 
-def _load_banned_users() -> set:
+def _load_banned_users() -> set[str]:
     if not os.path.exists(BAN_FILE):
         return set()
     try:
-        with open(BAN_FILE, "r", encoding='utf-8') as f:
+        with open(BAN_FILE, encoding='utf-8') as f:
             return {line.strip().lower() for line in f if line.strip()}
     except Exception:
         return set()
 
-def _save_users(users):
+def _save_users(users: dict[str, Any]) -> None:
     """Save accounts into JSON file"""
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(USERS_FILE, "w", encoding="utf-8") as f:
@@ -50,7 +52,7 @@ def verify_password(stored_hash:str, provided_password: str)->bool:
     """Compare provided password with hash password"""
     return stored_hash == _hash_password(provided_password)
 
-def register(username, password, role="user"):
+def register(username: str, password: str, role: str = "user") -> tuple[bool, str]:
     """Register new account"""
     username = username.strip().lower()
     valid, err_nickname = validate_nickname(username)
@@ -72,7 +74,7 @@ def register(username, password, role="user"):
     print(f"[AUTH LOG] Register success: User '{username}' registered with role '{role}'.")
     return True, "Registration successful"
 
-def login(username, password):
+def login(username: str, password: str) -> tuple[bool, dict[str, Any] | None]:
     """Login and start an information session"""
     username = username.strip().lower()
     users = _load_users()

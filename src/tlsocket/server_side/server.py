@@ -54,13 +54,13 @@ def handle_new_connection(raw_client, address):
     
     if not accept_new_client(client, real_ip_addr):
         try:
-            client.sendall("ERR CONNECTION_LIMIT_REACHED.\n".encode("utf-8"))
-        except OSError as e:
+            client.sendall(b"ERR CONNECTION_LIMIT_REACHED.\n")
+        except OSError:
             pass
         log_event("CONNECTION_LIMIT_REACHED", extra_info=f"ip={real_ip_addr}")
         try:
             client.close()
-        except OSError as e:
+        except OSError:
             pass
         return
 
@@ -86,13 +86,13 @@ def handle_new_connection(raw_client, address):
                         # print(f"[TEST MODE] Real IP {real_ip_addr} overridden with Fake IP: {ip_addr}")
                         log_test_event("USER_CONNECTED", ip=ip_addr, extra_info=f"real_ip={real_ip_addr}")
                 else: 
-                    client.sendall("ERR PERMISSION_DENIED.\n".encode("utf-8"))
+                    client.sendall(b"ERR PERMISSION_DENIED.\n")
                 continue
                 
             if brute_force_detector.is_ip_blocked(ip_addr):
                 remaining_time = brute_force_detector.get_remaining_ban_time(ip_addr)
                 print(f"[SECURITY] Refused connection from blocked IP: {ip_addr} ({remaining_time}s remaining)")
-                client.sendall(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode("utf-8"))
+                client.sendall(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode())
                 log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info=f"reason=BRUTE_FORCE_DETECTION remaining_sec={remaining_time}")
                 break
 
@@ -113,7 +113,7 @@ def handle_new_connection(raw_client, address):
                             reserved_username = username
 
                     if already_online:
-                        client.sendall("ERR ALREADY_LOGGED_IN\n".encode("utf-8"))
+                        client.sendall(b"ERR ALREADY_LOGGED_IN\n")
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
                         reserved_username = None
                         continue
@@ -124,7 +124,7 @@ def handle_new_connection(raw_client, address):
                             with state_lock:
                                 pending_logins.discard(reserved_username)
                             reserved_username = None
-                            client.sendall("ERR BANNED\n".encode('utf-8'))
+                            client.sendall(b"ERR BANNED\n")
                             log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                             continue
                         session = user_session
@@ -133,18 +133,18 @@ def handle_new_connection(raw_client, address):
                         with state_lock:
                             pending_logins.discard(reserved_username)
                         reserved_username = None
-                        client.sendall("ERR BANNED\n".encode('utf-8'))
+                        client.sendall(b"ERR BANNED\n")
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                         continue
                     else:
                         with state_lock:
                             pending_logins.discard(reserved_username)
                         reserved_username = None
-                        client.sendall("ERR WRONG_AUTH\n".encode("utf-8")) # Decline due to wrong information
+                        client.sendall(b"ERR WRONG_AUTH\n") # Decline due to wrong information
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
                         continue
                 else:
-                    client.sendall("ERR INVALID_FORMAT\n".encode("utf-8"))
+                    client.sendall(b"ERR INVALID_FORMAT\n")
                     continue
             # Register new users
             elif line.startswith("REGISTER "):
@@ -153,17 +153,17 @@ def handle_new_connection(raw_client, address):
                     _, username, password = parts
                     success, msg = register(username, password)
                     if success:
-                        client.sendall(f"OK {msg}\n".encode("utf-8")) # Send OK message if succeess
+                        client.sendall(f"OK {msg}\n".encode()) # Send OK message if succeess
                         log_event("REGISTER_SUCCESS", username=username, ip=ip_addr)
                     else:
-                        client.sendall(f"ERR {msg}\n".encode("utf-8")) # Show error message
+                        client.sendall(f"ERR {msg}\n".encode()) # Show error message
                         log_event("REGISTER_FAILED", username=username, ip=ip_addr, extra_info=f"reason={msg}")
                 else:
-                    client.sendall("ERR INVALID_FORMAT\n".encode("utf-8"))
+                    client.sendall(b"ERR INVALID_FORMAT\n")
                     log_event("REGISTER_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_FORMAT")
                 continue
             else:
-                client.sendall("ERR INVALID_COMMAND\n".encode("utf-8"))
+                client.sendall(b"ERR INVALID_COMMAND\n")
                 # Protocol errors are not credential-guessing: log them, but keep
                 # them out of brute-force scoring (which only reacts to LOGIN_FAILED).
                 log_event("INVALID_COMMAND", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_COMMAND")
@@ -173,7 +173,7 @@ def handle_new_connection(raw_client, address):
         if not session:
             try:
                 clean_up_client(client, "AUTHENTICATION_FAILED", client_ip=real_ip_addr)
-            except:
+            except Exception:
                 pass
             return
                 
@@ -188,8 +188,8 @@ def handle_new_connection(raw_client, address):
 
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")
-        client.sendall(f"OK Connected as {nickname}, role:{session['role']}\n".encode("utf-8"))
-        broadcast(f"MSG {nickname} joined the chat!\n".encode("utf-8"), sender=client)
+        client.sendall(f"OK Connected as {nickname}, role:{session['role']}\n".encode())
+        broadcast(f"MSG {nickname} joined the chat!\n".encode(), sender=client)
 
         thread = threading.Thread(target=handle_messages, args=(client, real_ip_addr), daemon=True)
         thread.start()
@@ -199,7 +199,7 @@ def handle_new_connection(raw_client, address):
         log_event("CONNECTION_ERROR", username="Unknown", ip=real_ip_addr, extra_info=f"error={e}")
         try:
             clean_up_client(client, "CONNECTION_ERROR", client_ip=real_ip_addr)
-        except:
+        except Exception:
             pass
         return
 
@@ -233,7 +233,7 @@ def server_console_input():
 
                 if set_user_role(target_user, new_role):
                     print(f"[SERVER CONSOLE] Success: User '{target_user}' is now an '{new_role}'!")
-                    broadcast(f"MSG {target_user} is now an '{new_role}!\n".encode('utf-8')) # Send the announcement to all users
+                    broadcast(f"MSG {target_user} is now an '{new_role}!\n".encode()) # Send the announcement to all users
                     log_event("SET", username=target_user, extra_info=f"new_role={new_role}") 
 
                     target_sock = None
@@ -246,17 +246,17 @@ def server_console_input():
 
                     if target_sock:
                         try:
-                            target_sock.sendall(f"MSG {'-' * 50}\n".encode("utf-8"))
-                            target_sock.sendall(f"MSG [SYSTEM] Your role has been updated to '{new_role}' by Server Admin!\n".encode("utf-8"))
+                            target_sock.sendall(f"MSG {'-' * 50}\n".encode())
+                            target_sock.sendall(f"MSG [SYSTEM] Your role has been updated to '{new_role}' by Server Admin!\n".encode())
                             if new_role in ["moderator", "admin"]:
-                                target_sock.sendall(f"MSG {'-' * 50}\n".encode("utf-8"))
-                                target_sock.sendall(f"MSG [SYSTEM] New commands unlocked:\n".encode("utf-8"))
-                                target_sock.sendall(f"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n".encode("utf-8"))
-                                target_sock.sendall(f"MSG - Type '/ban' <user_name> to ban a user from the chat room\n".encode("utf-8"))
-                                target_sock.sendall(f"MSG - Type '/unban' <user_name> to unban a user\n".encode("utf-8"))
+                                target_sock.sendall(f"MSG {'-' * 50}\n".encode())
+                                target_sock.sendall(b"MSG [SYSTEM] New commands unlocked:\n")
+                                target_sock.sendall(b"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n")
+                                target_sock.sendall(b"MSG - Type '/ban' <user_name> to ban a user from the chat room\n")
+                                target_sock.sendall(b"MSG - Type '/unban' <user_name> to unban a user\n")
                                 if new_role == "admin":
-                                    target_sock.send(f"MSG - Type '/set' <username> <role> to set a new role for a user\n".encode("utf-8"))
-                            target_sock.sendall(f"MSG {'-' * 50}\n".encode("utf-8"))
+                                    target_sock.send(b"MSG - Type '/set' <username> <role> to set a new role for a user\n")
+                            target_sock.sendall(f"MSG {'-' * 50}\n".encode())
 
                         except OSError as e:
                             print(f"[SERVER CONSOLE] Error sending role update to '{target_user}': {e}")
@@ -266,22 +266,22 @@ def server_console_input():
             elif cmd.startswith("/kick "):
                 target_user = cmd[6:].strip().lower()
                 if kick_user(target_user):
-                    broadcast(f"MSG {target_user} was kicked by server admin!\n".encode('utf-8')) # Send the announcement to all users
+                    broadcast(f"MSG {target_user} was kicked by server admin!\n".encode()) # Send the announcement to all users
                     print(f'{target_user} was kicked!')
-                    log_event("KICK", username=target_user, extra_info=f"by=server_admin")
+                    log_event("KICK", username=target_user, extra_info="by=server_admin")
             elif cmd.startswith("/ban "):
                 target_user = cmd[5:].strip().lower()
                 add_ban(target_user)
                 kick_user(target_user)  # Disconnect the user if they are currently online
-                broadcast(f"MSG {target_user} was banned by server admin!\n".encode('utf-8')) # Send the announcement to all users
+                broadcast(f"MSG {target_user} was banned by server admin!\n".encode()) # Send the announcement to all users
                 print(f'{target_user} was banned!')
-                log_event("BAN", username=target_user, extra_info=f"by=server_admin")
+                log_event("BAN", username=target_user, extra_info="by=server_admin")
             elif cmd.startswith("/unban "):
                 target_user = cmd[7:].strip().lower()
                 remove_ban(target_user)
                 print(f'{target_user} was unbanned!')
-                broadcast(f"MSG {target_user} was unbanned by server admin!\n".encode('utf-8')) # Send the announcement to all users
-                log_event("UNBAN", username=target_user, extra_info=f"by=server_admin")
+                broadcast(f"MSG {target_user} was unbanned by server admin!\n".encode()) # Send the announcement to all users
+                log_event("UNBAN", username=target_user, extra_info="by=server_admin")
 
         except (EOFError, KeyboardInterrupt):
             break

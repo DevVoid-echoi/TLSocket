@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from typing import Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from tlsocket.log_parser.models import LogRecord
 
 
-def analyze(records: Iterable[LogRecord]) -> dict:
+def analyze(records: Iterable[LogRecord]) -> dict[str, Any]:
     """Analyze log files and return statistics."""
     total = 0
     error_count = 0
@@ -15,11 +16,11 @@ def analyze(records: Iterable[LogRecord]) -> dict:
     successful_logins_count = 0
     banned_users_count = 0
     kicked_users_count = 0
-    suspicious_ips = defaultdict(int)
+    suspicious_ips: defaultdict[str, int] = defaultdict(int)
     brute_force_detector = False
     ddos_detector = False
 
-    ip_count = Counter()
+    ip_count: Counter[str] = Counter()
 
     for r in records:
         total += 1

@@ -1,8 +1,8 @@
 import json
 import os
 from collections import defaultdict
+from collections.abc import Iterable
 from datetime import datetime, timedelta
-from typing import Dict, Iterable, List
 
 from tlsocket.config import (
     BLOCK_DURATION,
@@ -21,13 +21,13 @@ class BruteForceDetector:
         self.window_seconds = window_seconds
         self.block_duration = block_duration
         # Dictionary to keep track of failed attempts history for each IP address
-        self.failed_attempts_history: Dict[str, List[datetime]] = defaultdict(list)
-        self.violation_count: Dict[str, int] = defaultdict(int)  # Dictionary to keep track of violation counts for each IP
-        self.blocked_ips: Dict[str,datetime] = {} # Dictionary to keep track of blocked IPs and their unblock time
+        self.failed_attempts_history: dict[str, list[datetime]] = defaultdict(list)
+        self.violation_count: dict[str, int] = defaultdict(int)  # Dictionary to keep track of violation counts for each IP
+        self.blocked_ips: dict[str,datetime] = {} # Dictionary to keep track of blocked IPs and their unblock time
         self.db_file = BRUTE_FORCE_STATE_FILE  # Path to the JSON file for saving state
         self.load_state()
 
-    def save_state(self):
+    def save_state(self) -> None:
         data = {
             "violation_count": dict(self.violation_count),
             "blocked_ips": {
@@ -38,10 +38,10 @@ class BruteForceDetector:
         with open(self.db_file, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
 
-    def load_state(self):
+    def load_state(self) -> None:
         if os.path.exists(self.db_file):
             try:
-                with open (self.db_file, "r", encoding="utf-8") as f:
+                with open (self.db_file, encoding="utf-8") as f:
                     data = json.load(f)
                 
                 for ip, count in data.get("violation_count", {}).items():
@@ -86,7 +86,7 @@ class BruteForceDetector:
         remaining = (self.blocked_ips[ip] - datetime.now()).total_seconds()
         return max(0, int(remaining))
 
-    def process_record(self, record: LogRecord):
+    def process_record(self, record: LogRecord) -> None:
         # Process a log record to detect failed login attempts
         if record.event_type != "LOGIN_FAILED" or not record.ip or record.ip == "N/A":
             return  # Ignore non-login failed events or invalid IPs
@@ -116,7 +116,7 @@ class BruteForceDetector:
 
             self.save_state()  # Save the state after blocking the IP
 
-def detect_brute_force_stream(records: Iterable[LogRecord], max_attempts: int=5, window_seconds: int=60):
+def detect_brute_force_stream(records: Iterable[LogRecord], max_attempts: int=5, window_seconds: int=60) -> None:
     # Create a BruteForceDetector instance and process a stream of log records
     detector = BruteForceDetector(max_attempts=max_attempts, window_seconds=window_seconds)
     for record in records:

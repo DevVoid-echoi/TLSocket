@@ -3,6 +3,7 @@ import pytest
 from tlsocket.log_parser.models import LogRecord
 from tlsocket.log_parser.parser import iter_record, parse_line
 
+
 def test_parse_line_basic():
     line = "2026-08-27 15:00:15 INFO LOGIN_SUCCESS username=alice ip=127.0.0.1"
     assert parse_line(line) == LogRecord(

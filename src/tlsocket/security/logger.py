@@ -5,7 +5,7 @@ from pathlib import Path
 from tlsocket.config import ALERT_LOG
 
 
-def setup_alert_logger(log_file=ALERT_LOG):
+def setup_alert_logger(log_file: str | Path = ALERT_LOG) -> logging.Logger:
     # Create the log directory if it doesn't exist
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
 
@@ -27,7 +27,7 @@ def setup_alert_logger(log_file=ALERT_LOG):
 # Initialize the alert logger
 alert_logger = setup_alert_logger()
 
-def log_alert(ip: str, failed_attempts: str, window_seconds: int):
+def log_alert(ip: str, failed_attempts: int, window_seconds: int) -> None:
     # Get the current timestamp as a formatted string
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     # Create the alert message

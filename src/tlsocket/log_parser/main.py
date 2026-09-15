@@ -25,11 +25,11 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.file == "server":
-        LOG_PATH = SER_LOG_PATH
+        log_path = SER_LOG_PATH
     if args.file == "security":
-        LOG_PATH = SEC_LOG_PATH
+        log_path = SEC_LOG_PATH
 
-    results = analyze(iter_record(LOG_PATH))
+    results = analyze(iter_record(log_path))
 
     total_requests = results["total_requests"]
     all_ips = results["all_ips"]
@@ -41,14 +41,14 @@ def main() -> int:
     error_count = results["error_count"]
     error_rate = results["error_rate"]
     warning = results["warning"]
-    top_5_IPs = results["top_5_IPs"]
+    top_5_ips = results["top_5_IPs"]
     suspicious_ips = results["suspicious_IPs"]
     brute_force_alert = results["brute_force_alert"]
     ddos_alert = results["ddos_alert"]
 
     print("\n" + "=" * 50)
-    if os.path.exists(LOG_PATH):
-        with open(LOG_PATH, "r", encoding="utf-8") as f:
+    if os.path.exists(log_path):
+        with open(log_path, encoding="utf-8") as f:
             print("--- LOG CONTENT ---")
             print(f.read())
     else:
@@ -88,7 +88,7 @@ def main() -> int:
     print("=" * 50)
 
     print("Top 5 IPs:")
-    for ip, count in top_5_IPs:
+    for ip, count in top_5_ips:
         print(f"{ip}:{count}")
     print("=" * 50)
 
@@ -127,7 +127,7 @@ def main() -> int:
             "error_count": error_count,
             "error_rate": error_rate,
             "warning": warning,
-            "top_5_IPs": top_5_IPs,
+            "top_5_IPs": top_5_ips,
             "suspicious_IPs": suspicious_ips ,
             "brute_force_alert": brute_force_alert,
             "ddos_alert": ddos_alert

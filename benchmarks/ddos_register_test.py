@@ -11,9 +11,9 @@ context.check_hostname = False
 
 
 def simulate_register_ddos(fake_ip: str):
-    print(f"\n==========================================")
+    print("\n==========================================")
     print(f"[TEST] Simulate a register DDoS attack from ip: {fake_ip}")
-    print(f"==========================================")
+    print("==========================================")
 
     for i in range(1, 100000000000):
         try:
@@ -21,13 +21,13 @@ def simulate_register_ddos(fake_ip: str):
             sock.connect((HOST, PORT))
             wrapped_socket = context.wrap_socket(sock, server_hostname=HOST)  # Wrap the socket in TLS
 
-            wrapped_socket.send(f"CLIENT_IP {fake_ip}\n".encode("utf-8"))
+            wrapped_socket.send(f"CLIENT_IP {fake_ip}\n".encode())
             
             time.sleep(0.05)
             
             fake_user = i
             fake_pass = f"wrong_password_{i}"
-            wrapped_socket.send(f"REGISTER {fake_user} {fake_pass}\n".encode("utf-8"))
+            wrapped_socket.send(f"REGISTER {fake_user} {fake_pass}\n".encode())
 
             response = wrapped_socket.recv(1024).decode("utf-8").strip()
             print(f" -> Lần {i}: Server phản hồi => {response}")

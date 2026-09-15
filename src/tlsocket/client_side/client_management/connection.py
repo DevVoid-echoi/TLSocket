@@ -72,7 +72,7 @@ def write(client, nickname):
                 if not target_user:
                     print("Usage: /kick <username>")
                     continue
-                client.send(f"KICK {target_user}\n".encode('utf-8'))
+                client.send(f"KICK {target_user}\n".encode())
                 continue
             # Send BAN command to the server for permission validation
             elif cmd.lower().startswith("/ban "):
@@ -80,14 +80,14 @@ def write(client, nickname):
                 if not target_user:
                     print("Usage: /ban <username>")
                     continue
-                client.send(f"BAN {target_user}\n".encode('utf-8'))
+                client.send(f"BAN {target_user}\n".encode())
                 continue
             elif cmd.lower().startswith("/unban "):
                 target_user = cmd[7:].strip()
                 if not target_user:
                     print("Usage: /unban <username>")
                     continue
-                client.send(f"UNBAN {target_user}\n".encode('utf-8'))
+                client.send(f"UNBAN {target_user}\n".encode())
             elif cmd.lower().startswith("/set "):
                 parts = cmd[5:].strip().split(maxsplit=1)
                 if len(parts) != 2:
@@ -95,9 +95,9 @@ def write(client, nickname):
                     continue
                 target_user = parts[0].strip().lower()
                 new_role = parts[1].strip().lower()
-                client.send(f"SET {target_user} {new_role}\n".encode('utf-8'))
+                client.send(f"SET {target_user} {new_role}\n".encode())
             elif cmd:
-                client.send(f"MSG {user_input}\n".encode('utf-8'))
+                client.send(f"MSG {user_input}\n".encode())
 
         except (KeyboardInterrupt, EOFError):
             """Allow quit from keyboard and disconnect when receive an error"""

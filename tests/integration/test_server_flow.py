@@ -2,6 +2,7 @@ import time
 
 from tlsocket.server_side.handlers import client_handler as ch
 
+
 def test_register_then_login_succeeds(make_client):
     alice = make_client()
     alice.send("REGISTER alice pw123")
