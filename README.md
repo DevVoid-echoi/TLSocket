@@ -1,7 +1,7 @@
 # TLSocket — Multi-Threaded TLS Chat System with RBAC & Security Logging
 
-[![CI](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml/badge.svg?branch=test-and-ci)](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/DevVoid-echoi/TLSocket/branch/test-and-ci/graph/badge.svg)](https://codecov.io/gh/DevVoid-echoi/TLSocket)
+[![CI](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/DevVoid-echoi/TLSocket/branch/main/graph/badge.svg)](https://codecov.io/gh/DevVoid-echoi/TLSocket)
 
 A multi-threaded client/server chat system built on Python's standard library
 (`socket`, `ssl`, `threading`). The focus is a security-centric architecture:
