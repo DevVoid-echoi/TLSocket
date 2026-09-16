@@ -2,7 +2,7 @@ from collections import defaultdict
 
 from tlsocket.auth.authentication import set_user_role
 from tlsocket.auth.rbac import Permission, has_permission
-from tlsocket.config import MAX_CONNECTIONS_PER_IP
+from tlsocket.config import MAX_CONNECTIONS_PER_IP, MAX_LINE_LENGTH
 from tlsocket.security.validation import parse_and_validate_command, validate_message
 from tlsocket.server_side.handlers.ban_handler import add_ban, remove_ban
 from tlsocket.server_side.handlers.lock import ip_lock, send_lock, state_lock
@@ -21,6 +21,8 @@ pending_logins = set()
 def read_line(sock, buffer):
     """Read full-line messages"""
     while "\n" not in buffer:
+        if len(buffer) > MAX_LINE_LENGTH:
+            return None, buffer
         try:
             chunk = sock.recv(4096).decode("utf-8", errors="replace")
             if not chunk:
