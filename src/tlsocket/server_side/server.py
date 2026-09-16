@@ -180,7 +180,7 @@ def handle_new_connection(raw_client, address):
         if not session:
             try:
                 clean_up_client(client, "AUTHENTICATION_FAILED", client_ip=real_ip_addr)
-            except Exception:
+            except Exception: # nosec B110 - best-effort cleanup, không có gì để retry ở bước xác thực thất bại
                 pass
             return
                 
@@ -206,7 +206,7 @@ def handle_new_connection(raw_client, address):
         log_event("CONNECTION_ERROR", username="Unknown", ip=real_ip_addr, extra_info=f"error={e}")
         try:
             clean_up_client(client, "CONNECTION_ERROR", client_ip=real_ip_addr)
-        except Exception:
+        except Exception: # nosec B110 - best-effort cleanup khi đang xử lý lỗi kết nối, không retry được nữa
             pass
         return
 

@@ -13,7 +13,7 @@ def _dir(env: str, default: str) -> Path:
     return Path(os.environ.get(env, default)).expanduser()
 
 
-HOST = os.environ.get("TLSOCKET_HOST", "0.0.0.0")  # bind/connect address
+HOST = os.environ.get("TLSOCKET_HOST", "0.0.0.0")  # nosec B104 - server cố ý bind mọi interface theo mặc định; production nên giới hạn qua TLSOCKET_HOST/firewall
 PORT = int(os.environ.get("TLSOCKET_PORT", "9999"))
 
 CLIENT_HOST = os.environ.get("TLSOCKET_CLIENT_HOST", "localhost")

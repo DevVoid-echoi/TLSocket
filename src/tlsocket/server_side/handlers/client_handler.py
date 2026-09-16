@@ -128,7 +128,7 @@ def kick_user(name):
             with send_lock:
                 client_to_kick.send(b"MSG You were kicked!\n")
             client_to_kick.close()
-        except Exception:
+        except Exception: # nosec B110 - best-effort: client đã bị đóng, không còn gì để retry
             pass
         clean_up_client(client_to_kick, "kicked", target_ip)
         return True
@@ -257,7 +257,7 @@ def handle_messages(client, client_ip=None):
         """Broadcast the normal message"""
         if line.startswith("MSG "):
             if not message_limiter.allow(client):
-                client.send(b"ERR RATE_LIMIT_EXCEEDED Typing too fast. Try again later!\n".encode())
+                client.send(b"ERR RATE_LIMIT_EXCEEDED Typing too fast. Try again later!\n")
                 log_event("RATE_LIMIT_EXCEEDED", username=current_nick, extra_info="reason=MESSAGE_FLOOD")
                 continue
 
