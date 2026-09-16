@@ -87,15 +87,46 @@ def test_verify_password_matches_correct_password():
     assert auth.verify_password(stored_harsh, "pw123") is True
     assert auth.verify_password(stored_harsh, "wrong") is False
 
-def test_same_password_hash_the_same():
-    """Đóng đinh hành vi HIỆN TẠI, không phải hành vi nên có: salt cố định
-    dùng chung cho mọi user là một điểm yếu bảo mật thật (xem SECURITY DEBT
-    trong _hash_password) - test này sẽ phải sửa cùng lúc với việc vá salt."""
+def test_same_password_hash_different():
     auth.register("alice", "pw123")
     auth.register("bob", "pw123")
     users = json.loads(auth.USERS_FILE.read_text())
-    verify = (users["alice"]["password_hash"] == users["bob"]["password_hash"])
-    assert verify is True
+    alice_hash = users["alice"]["password_hash"]
+    bob_hash = users["bob"]["password_hash"]
+    assert alice_hash != bob_hash
+    assert alice_hash.startswith("$argon2id$")
+    assert bob_hash.startswith("$argon2id$")
+
+def test_needs_rehash_true_for_legacy_hash():
+    legacy = auth._legacy_hash_password("pw123")
+    assert auth.needs_rehash(legacy) is True
+
+def test_needs_rehash_false_for_fresh_argon2_hash():
+    fresh = auth._hash_password("pw123")
+    assert auth.needs_rehash(fresh) is False
+
+def test_verify_password_still_validates_legacy_hash():
+    legacy_hash = auth._legacy_hash_password("pw123")
+    assert auth.verify_password(legacy_hash, "pw123") is True
+    assert auth.verify_password(legacy_hash, "wrong") is False
+
+def test_test_migrates_legacy_hash_to_argon2():
+    legacy_hash = auth._legacy_hash_password("pw123")
+    auth.USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    auth.USERS_FILE.write_text(json.dumps({
+        "alice": {"password_hash": legacy_hash, "role": "user"}
+    }))
+
+    ok, session = auth.login("alice", "pw123")
+    assert ok is True
+    assert session is not None
+
+    users = json.loads(auth.USERS_FILE.read_text())
+    assert users["alice"]["password_hash"].startswith("$argon2id$")
+
+    ok2, session2 = auth.login("alice", "pw123")
+    assert ok2 is True
+    assert session2 is not None
 
 def test_load_users_with_corrupted_json_returns_empty():
     auth.USERS_FILE.write_text("{ not valid json")

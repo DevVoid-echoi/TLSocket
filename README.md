@@ -84,14 +84,19 @@ with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
 
 ### Prerequisites
 
-* Python 3.10+ (developed on 3.12). Runtime is standard library only.
-* A TLS key pair. To generate a self-signed pair for local use:
+* Python 3.10+ (developed on 3.12). Runtime dependency: `argon2-cffi`
+  (password hashing).
+* A TLS key pair. Generate a self-signed pair for local dev:
 
   ```bash
-  mkdir -p certs
-  openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-    -keyout certs/server.key -out certs/server.crt -subj "/CN=localhost"
+  ./scripts/gen_certs.sh
   ```
+
+  > **Dev only.** This is a self-signed certificate with SAN entries for
+  > `localhost` / `127.0.0.1` — fine for local development, but browsers/
+  > clients elsewhere will not trust it. In production, use a certificate
+  > from a real CA (e.g. [Let's Encrypt](https://letsencrypt.org/)) instead
+  > of `scripts/gen_certs.sh`.
 
 ### Install
 
@@ -153,3 +158,11 @@ Anything else typed is sent as a chat message.
 2026-08-27 15:00:22 WARNING LOGIN_FAILED username=bob ip=127.0.0.1
 2026-08-27 15:01:05 WARNING KICK username=spammer by=admin
 ```
+
+---
+
+## Security
+
+See [`docs/SECURITY.md`](docs/SECURITY.md) for the threat model — what's
+mitigated, how, and the known limitations — plus how to report a
+vulnerability.

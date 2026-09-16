@@ -22,13 +22,21 @@ jobs:
           cache: pip
 
       - name: Install
-        run: pip install -e ".[dev]"
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e ".[dev]"
 
       - name: Ruff
         run: ruff check .
 
       - name: Mypy
         run: mypy src/tlsocket/auth src/tlsocket/security src/tlsocket/log_parser
+      
+      - name: Bandit (static security scan)
+        run: bandit -r src/
+
+      - name: pip-audit (dependency vulnerabilities)
+        run: pip-audit
 
       - name: Pytest + coverage gate (auth/security/log_parser >= 80%)
         run: |

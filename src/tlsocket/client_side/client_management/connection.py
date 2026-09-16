@@ -1,10 +1,14 @@
 import sys
 
+from tlsocket.config import MAX_LINE_LENGTH
+
 stop_threads = False
 
 def read_line(sock, buffer):
     """Read full-line messages"""
     while "\n" not in buffer:
+        if len(buffer) > MAX_LINE_LENGTH:
+            return None, buffer
         try:
             chunk = sock.recv(4096).decode("utf-8", errors="replace")
             if not chunk:

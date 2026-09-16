@@ -1,11 +1,18 @@
 import hashlib
+import hmac
 import json
 import os
 from typing import Any
 
+from argon2 import PasswordHasher
+from argon2.exceptions import InvalidHashError, VerifyMismatchError
+
 from tlsocket.config import BAN_FILE, USERS_FILE
 from tlsocket.security.validation import validate_nickname
 
+_ph = PasswordHasher()
+
+_LEGACY_SALT = "tcp_chat_room_salt_2026"
 
 def _load_users() -> dict[str, Any]:
     """Read accounts from JSON file"""
@@ -33,24 +40,37 @@ def _save_users(users: dict[str, Any]) -> None:
     with open(USERS_FILE, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=4)
 
-def _hash_password(password:str)->str:
-    """Hash password with SHA-256 and salt
+def _legacy_hash_password(password: str) -> str:
+    """SHA-256 + salt tĩnh dùng chung cho mọi user - thuật toán CŨ, không an
+    toàn. Chỉ dùng để verify hash cũ, không dùng để tạo hash mới."""
+    return hashlib.sha256((password + _LEGACY_SALT).encode("utf-8")).hexdigest()
 
-    SECURITY DEBT: the salt is a single hard-coded constant shared by every
-    user, not a per-user random salt. Two users with the same password get
-    the exact same password_hash (visible to anyone who reads user.json),
-    and a single precomputed table for this one salt cracks every account
-    at once. SHA-256 is also unsalted-per-user and fast, unlike a proper
-    password KDF (bcrypt/scrypt/PBKDF2/argon2). Fixing this changes the
-    stored hash format and needs a migration path for existing user.json
-    entries - tracked as a follow-up, not fixed here.
-    """
-    salt = "tcp_chat_room_salt_2026"
-    return hashlib.sha256((password + salt).encode("utf-8")).hexdigest()
+def _hash_password(password: str) -> str:
+    """Hash mật khẩu bằng Argon2id - salt ngẫu nhiên tự sinh, tự nhúng vào
+    chuỗi kết quả, không cần lưu salt riêng."""
+    return _ph.hash(password)
 
-def verify_password(stored_hash:str, provided_password: str)->bool:
-    """Compare provided password with hash password"""
-    return stored_hash == _hash_password(provided_password)
+def _is_legacy_hash(stored_hash: str) -> bool:
+    return not stored_hash.startswith("$argon2")
+
+def needs_rehash(stored_hash: str) -> bool:
+    """True nếu hash cần tính lại theo thuật toán/tham số hiện tại:
+    - hash cũ (SHA-256): luôn cần.
+    - hash Argon2id: chỉ cần khi tham số cost đã đổi so với lúc hash (vd sau
+      này nâng cấp độ khó của _ph)."""
+    if _is_legacy_hash(stored_hash):
+        return True
+    return _ph.check_needs_rehash(stored_hash)
+
+def verify_password(stored_hash: str, provided_password: str) -> bool:
+    """So khớp mật khẩu, hỗ trợ cả hash Argon2id (mới) lẫn SHA-256+salt tĩnh
+    (cũ, để còn đăng nhập được trước khi needs_rehash() migrate nó)."""
+    if _is_legacy_hash(stored_hash):
+        return hmac.compare_digest(stored_hash, _legacy_hash_password(provided_password))
+    try:
+        return bool(_ph.verify(stored_hash, provided_password))
+    except (VerifyMismatchError, InvalidHashError):
+        return False
 
 def register(username: str, password: str, role: str = "user") -> tuple[bool, str]:
     """Register new account"""
@@ -85,6 +105,11 @@ def login(username: str, password: str) -> tuple[bool, dict[str, Any] | None]:
 
     user_data = users[username]
     if verify_password(user_data["password_hash"], password):
+        if needs_rehash(user_data["password_hash"]):
+            user_data["password_hash"] = _hash_password(password)
+            users[username] = user_data
+            _save_users(users)
+            print(f"[AUTH LOG] Rehashed password for user '{username}' to Argon2id.")
         banned_users = _load_banned_users()
         if username in banned_users:
             print(f"[AUTH LOG] Login failed: User '{username}' is banned.")

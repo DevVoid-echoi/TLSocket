@@ -88,3 +88,30 @@ def test_disconnect_cleans_up_server_state(make_client):
 
     assert "alice" not in ch.nicknames
     assert ch.ip_connection_counts == {}
+
+def test_register_rate_limiter_per_ip(make_client):
+    from tlsocket.config import MAX_REGISTER_ATTEMPTS
+
+    client = make_client()
+    for i in range(MAX_REGISTER_ATTEMPTS):
+        client.send(f"REGISTER user{i} pw123")
+        assert client.recv_line() == "OK Registration successful"
+
+    blocked_client = make_client()
+    blocked_client.send("REGISTER blocked_user pw123")
+    assert blocked_client.recv_line().startswith("ERR RATE_LIMIT_EXCEEDED")
+
+def test_message_flood_is_rate_limited(make_client):
+    from tlsocket.config import MAX_MESSAGES_PER_WINDOW
+
+    client = make_client()
+    client.send("REGISTER alice pw123")
+    client.recv_line()
+    client.send("LOGIN alice pw123")
+    client.recv_line()
+
+    for i in range(MAX_MESSAGES_PER_WINDOW):
+        client.send(f"MSG hello {i}")
+
+    client.send("MSG one_too_many")
+    assert client.recv_line().startswith("ERR RATE_LIMIT_EXCEEDED")

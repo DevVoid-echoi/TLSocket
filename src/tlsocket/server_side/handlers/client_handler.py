@@ -2,7 +2,13 @@ from collections import defaultdict
 
 from tlsocket.auth.authentication import set_user_role
 from tlsocket.auth.rbac import Permission, has_permission
-from tlsocket.config import MAX_CONNECTIONS_PER_IP
+from tlsocket.config import (
+    MAX_CONNECTIONS_PER_IP,
+    MAX_LINE_LENGTH,
+    MAX_MESSAGES_PER_WINDOW,
+    MESSAGE_RATE_WINDOW,
+)
+from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.security.validation import parse_and_validate_command, validate_message
 from tlsocket.server_side.handlers.ban_handler import add_ban, remove_ban
 from tlsocket.server_side.handlers.lock import ip_lock, send_lock, state_lock
@@ -18,9 +24,13 @@ client_ips = {}
 
 pending_logins = set()
 
+message_limiter = SlidingWindowLimiter(max_events=MAX_MESSAGES_PER_WINDOW, window_seconds=MESSAGE_RATE_WINDOW)
+
 def read_line(sock, buffer):
     """Read full-line messages"""
     while "\n" not in buffer:
+        if len(buffer) > MAX_LINE_LENGTH:
+            return None, buffer
         try:
             chunk = sock.recv(4096).decode("utf-8", errors="replace")
             if not chunk:
@@ -59,6 +69,8 @@ def clean_up_client(client, disconnect_msg, client_ip=None):
             nickname = None
             
         user_sessions.pop(client, None)
+
+    message_limiter.forget(client)
     
     with ip_lock:
         # Prefer the IP recorded at accept time; fall back to the caller-provided IP.
@@ -116,7 +128,7 @@ def kick_user(name):
             with send_lock:
                 client_to_kick.send(b"MSG You were kicked!\n")
             client_to_kick.close()
-        except Exception:
+        except Exception: # nosec B110 - best-effort: client đã bị đóng, không còn gì để retry
             pass
         clean_up_client(client_to_kick, "kicked", target_ip)
         return True
@@ -244,6 +256,11 @@ def handle_messages(client, client_ip=None):
 
         """Broadcast the normal message"""
         if line.startswith("MSG "):
+            if not message_limiter.allow(client):
+                client.send(b"ERR RATE_LIMIT_EXCEEDED Typing too fast. Try again later!\n")
+                log_event("RATE_LIMIT_EXCEEDED", username=current_nick, extra_info="reason=MESSAGE_FLOOD")
+                continue
+
             content = line[4:]
             valid, err_msg = validate_message(content)
 

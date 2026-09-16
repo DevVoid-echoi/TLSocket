@@ -9,7 +9,7 @@ from tlsocket.client_side.client_management.connection import (
     write,
 )
 from tlsocket.client_side.client_management.instructions import print_instructions
-from tlsocket.config import CERT_FILE, HOST, PORT
+from tlsocket.config import CERT_FILE, CLIENT_HOST, PORT
 
 # TODO: Allow reconnect after connection limit reached
 
@@ -18,13 +18,13 @@ def main():
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.load_verify_locations(str(CERT_FILE))
     context.verify_mode = ssl.CERT_REQUIRED
-    context.check_hostname = False
+    context.check_hostname = True
 
     raw_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
     try:
-        client = context.wrap_socket(raw_client, server_hostname=HOST)
-        client.connect((HOST, PORT))
+        client = context.wrap_socket(raw_client, server_hostname=CLIENT_HOST)
+        client.connect((CLIENT_HOST, PORT))
     except (ssl.SSLError, OSError) as e:
         print(f"Connection error: {e}")
         sys.exit(1)

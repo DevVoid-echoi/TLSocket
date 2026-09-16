@@ -4,7 +4,8 @@ import sys
 import threading
 
 from tlsocket.auth.authentication import login, register, set_user_role
-from tlsocket.config import CERT_FILE, HOST, KEY_FILE, PORT
+from tlsocket.config import CERT_FILE, HOST, KEY_FILE, MAX_REGISTER_ATTEMPTS, PORT, REGISTER_WINDOW
+from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.server_side.handlers.ban_handler import (
     add_ban,
     get_banned_users,
@@ -30,6 +31,8 @@ from tlsocket.server_side.logs_management.record_logs import (
 )
 
 TEST_MODE = False  # Set to True to enable test mode for IP address overriding
+
+register_limiter = SlidingWindowLimiter(max_events=MAX_REGISTER_ATTEMPTS, window_seconds=REGISTER_WINDOW)
 
 # Initialised by main(); referenced as globals by handle_new_connection()/receive().
 context: ssl.SSLContext | None = None
@@ -148,6 +151,10 @@ def handle_new_connection(raw_client, address):
                     continue
             # Register new users
             elif line.startswith("REGISTER "):
+                if not register_limiter.allow(ip_addr):
+                    client.sendall(b"ERR RATE_LIMIT_EXCEEDED Too many registration attempts. Try again later!\n")
+                    log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info="reason=REGISTER_FLOOD")
+                    continue
                 parts = line.split(" ", 2)
                 if len(parts) == 3:
                     _, username, password = parts
@@ -173,7 +180,7 @@ def handle_new_connection(raw_client, address):
         if not session:
             try:
                 clean_up_client(client, "AUTHENTICATION_FAILED", client_ip=real_ip_addr)
-            except Exception:
+            except Exception: # nosec B110 - best-effort cleanup, không có gì để retry ở bước xác thực thất bại
                 pass
             return
                 
@@ -199,7 +206,7 @@ def handle_new_connection(raw_client, address):
         log_event("CONNECTION_ERROR", username="Unknown", ip=real_ip_addr, extra_info=f"error={e}")
         try:
             clean_up_client(client, "CONNECTION_ERROR", client_ip=real_ip_addr)
-        except Exception:
+        except Exception: # nosec B110 - best-effort cleanup khi đang xử lý lỗi kết nối, không retry được nữa
             pass
         return
 

@@ -13,16 +13,24 @@ def _dir(env: str, default: str) -> Path:
     return Path(os.environ.get(env, default)).expanduser()
 
 
-HOST = os.environ.get("TLSOCKET_HOST", "0.0.0.0")  # bind/connect address
+HOST = os.environ.get("TLSOCKET_HOST", "0.0.0.0")  # nosec B104 - server cố ý bind mọi interface theo mặc định; production nên giới hạn qua TLSOCKET_HOST/firewall
 PORT = int(os.environ.get("TLSOCKET_PORT", "9999"))
+
+CLIENT_HOST = os.environ.get("TLSOCKET_CLIENT_HOST", "localhost")
 
 MAX_LOGIN_ATTEMPTS = 5
 LOGIN_WINDOW = 60
 BLOCK_DURATION = 10
 
+MAX_REGISTER_ATTEMPTS = 5
+REGISTER_WINDOW = 60
+
 MAX_NICKNAME_LENGTH = 20
 MIN_NICKNAME_LENGTH = 1
 MAX_MESSAGE_LENGTH = 1000
+MAX_MESSAGES_PER_WINDOW = 10
+MESSAGE_RATE_WINDOW = 10
+MAX_LINE_LENGTH = 4096
 
 MAX_CONNECTIONS_PER_IP = 5
 

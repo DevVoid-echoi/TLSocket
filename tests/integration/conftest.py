@@ -19,6 +19,7 @@ def running_server(tmp_path, monkeypatch):
     monkeypatch.setattr(auth, "USERS_FILE", users_file)
     monkeypatch.setattr(auth, "BAN_FILE", ban_file)
 
+    from tlsocket.server_side import server as srv
     from tlsocket.server_side.handlers import client_handler as ch
     from tlsocket.server_side.logs_management import record_logs as rl
     ch.clients.clear()
@@ -30,8 +31,8 @@ def running_server(tmp_path, monkeypatch):
     rl.brute_force_detector.blocked_ips.clear()
     rl.brute_force_detector.violation_count.clear()
     rl.brute_force_detector.failed_attempts_history.clear()
+    srv.register_limiter.reset()
 
-    from tlsocket.server_side import server as srv
     thread, sock, port = srv.create_server(host="127.0.0.1", port=0)
 
     yield port
@@ -71,7 +72,7 @@ def make_client(running_server):
     port = running_server
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.load_verify_locations(str(CERT_FILE))
-    ctx.check_hostname = False
+    ctx.check_hostname = True
     ctx.verify_mode = ssl.CERT_REQUIRED
     opened = []
 
