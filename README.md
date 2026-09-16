@@ -158,3 +158,11 @@ Anything else typed is sent as a chat message.
 2026-08-27 15:00:22 WARNING LOGIN_FAILED username=bob ip=127.0.0.1
 2026-08-27 15:01:05 WARNING KICK username=spammer by=admin
 ```
+
+---
+
+## Security
+
+See [`docs/SECURITY.md`](docs/SECURITY.md) for the threat model — what's
+mitigated, how, and the known limitations — plus how to report a
+vulnerability.
