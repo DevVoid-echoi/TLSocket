@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from tlsocket.auth.authentication import set_user_role
 from tlsocket.auth.rbac import Permission, has_permission
 from tlsocket.config import (
@@ -10,20 +8,11 @@ from tlsocket.config import (
 )
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.security.validation import parse_and_validate_command, validate_message
+from tlsocket.server_side.client_registry import ClientRegistry
 from tlsocket.server_side.handlers.ban_handler import add_ban, remove_ban
-from tlsocket.server_side.handlers.lock import ip_lock, send_lock, state_lock
 from tlsocket.server_side.logs_management.record_logs import log_event
 
-clients = []
-nicknames = []
-user_sessions = {}
-
-ip_connection_counts = defaultdict(int)
-
-client_ips = {}
-
-pending_logins = set()
-
+registry = ClientRegistry(max_connections_per_ip=MAX_CONNECTIONS_PER_IP)
 message_limiter = SlidingWindowLimiter(max_events=MAX_MESSAGES_PER_WINDOW, window_seconds=MESSAGE_RATE_WINDOW)
 
 def read_line(sock, buffer):
@@ -42,54 +31,24 @@ def read_line(sock, buffer):
     line, buffer = buffer.split("\n", 1)
     return line.strip(), buffer
 
-def rekey_client_ip(old_sock, new_sock):
-    with ip_lock:
-        if old_sock in client_ips:
-            client_ip = client_ips.pop(old_sock)
-            client_ips[new_sock] = client_ip
-
 def accept_new_client(client_socket, client_ip):
-    with ip_lock:
-        if ip_connection_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
-            return False
-        
-        ip_connection_counts[client_ip] += 1
-        client_ips[client_socket] = client_ip
-        return True
-
+    return registry.try_reserve_ip_slot(client_socket, client_ip)
 
 def clean_up_client(client, disconnect_msg, client_ip=None):
     """Clean up disconnected users"""
-    with state_lock:
-        if client in clients:
-            index = clients.index(client)
-            nickname = nicknames.pop(index)
-            clients.pop(index)
-        else:
-            nickname = None
-            
-        user_sessions.pop(client, None)
-
+    session = registry.remove(client)
     message_limiter.forget(client)
-    
-    with ip_lock:
-        # Prefer the IP recorded at accept time; fall back to the caller-provided IP.
-        recorded_ip = client_ips.pop(client, None) or client_ip
-
-        if recorded_ip and recorded_ip in ip_connection_counts:
-            ip_connection_counts[recorded_ip] -= 1
-            if ip_connection_counts[recorded_ip] <= 0:
-                del ip_connection_counts[recorded_ip]
+    registry.release_ip_slot(client, fallback_ip=client_ip)
 
     try:
         client.close()
     except OSError:
         pass
 
-    if nickname: # Print annoucement that the disconnected user left the chat
-        print(f"Client {nickname} {disconnect_msg}!")
-        broadcast(f"MSG {nickname} left the chat!\n",sender=client)
-        log_event("USER_DISCONNECTED", username=nickname)
+    if session: # Print annoucement that the disconnected user left the chat
+        print(f"Client {session.username} {disconnect_msg}!")
+        broadcast(f"MSG {session.username} left the chat!\n",sender=client)
+        log_event("USER_DISCONNECTED", username=session.username)
 
 
 def broadcast(message, sender=None):
@@ -97,43 +56,19 @@ def broadcast(message, sender=None):
     if isinstance(message, str):
         message = message.encode("utf-8") # Encode the message
 
-    with state_lock:
-        targets = list(clients) # Get the list of user
-
-    disconnected_clients = []
-
-    for client in targets:
-        if client != sender:
-            try:
-                with send_lock:
-                    client.sendall(message) # Send the message to all users except for the sender
-            except (BrokenPipeError, ConnectionResetError, OSError) as e:
-                print(f"Error sending message: {e}")
-                disconnected_clients.append(client) # Disconnect the user if get an error while sending the message
-    for client in disconnected_clients:
-        clean_up_client(client, "disconnected") # Clean up the disconnected client
+    for failed_client in registry.broadcast(message, sender=sender):
+        clean_up_client(failed_client, "disconnected") # Clean up the disconnected client
 
 def kick_user(name):
     """Remove the user in kick command"""
-    client_to_kick = None
-    with state_lock:
-        if name in nicknames:
-            index = nicknames.index(name)
-            client_to_kick = clients[index]
-            target_ip = client_ips.get(client_to_kick)
+    client_to_kick = registry.by_name(name)
+    if not client_to_kick:
+        return False
 
-    if client_to_kick:
-        try:
-            # Print the kick announcement and close the connection of the kicked user
-            with send_lock:
-                client_to_kick.send(b"MSG You were kicked!\n")
-            client_to_kick.close()
-        except Exception: # nosec B110 - best-effort: client đã bị đóng, không còn gì để retry
-            pass
-        clean_up_client(client_to_kick, "kicked", target_ip)
-        return True
-    return False
-
+    registry.send(client_to_kick, b"MSG You were kicked!\n")
+    clean_up_client(client_to_kick, "kicked")
+    return True
+    
 def handle_messages(client, client_ip=None):
     """Handle received messages from users"""
     buffer = ""
@@ -148,23 +83,14 @@ def handle_messages(client, client_ip=None):
             client.send(b"ERR MESSAGE_TOO_LONG\n")
             continue
 
-        session = user_sessions.get(client)
+        session = registry.get_session(client)
         if not session:
             client.send(b"ERR NOT_AUTHENTICATED\n")
             clean_up_client(client, "disconnected", client_ip)
             break
 
-        user_role = session.get("role", "user")
-
-        with state_lock:
-            current_nick = (
-                nicknames[clients.index(client)] if client in clients
-                else None
-            )
-
-        if not current_nick:
-            clean_up_client(client, "disconnected", client_ip)
-            break
+        user_role = session.role
+        current_nick = session.username
 
         if line.startswith(("KICK ", "BAN ", "UNBAN ", "SET ")):
             cmd, args, err = parse_and_validate_command(line)
@@ -231,13 +157,7 @@ def handle_messages(client, client_ip=None):
                 if set_user_role(target_user, new_role):
                     print(f"{target_user} role has been changed to {new_role} by {current_nick}")
                     broadcast(f"MSG {target_user} role has been changed to {new_role} by {current_nick}\n".encode())
-                    target_client = None
-                    with state_lock:
-                        if target_user in nicknames:
-                            index = nicknames.index(target_user)
-                            target_client = clients[index]
-                            if target_client in user_sessions:
-                                user_sessions[target_client]["role"] = new_role
+                    target_client = registry.set_role(target_user, new_role)
                     if target_client:
                         if new_role in ["moderator", "admin"]:
                             target_client.send(f"MSG {'-' * 50}\n".encode())

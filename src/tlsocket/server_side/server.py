@@ -6,6 +6,7 @@ import threading
 from tlsocket.auth.authentication import login, register, set_user_role
 from tlsocket.config import CERT_FILE, HOST, KEY_FILE, MAX_REGISTER_ATTEMPTS, PORT, REGISTER_WINDOW
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
+from tlsocket.server_side.client_registry import Session
 from tlsocket.server_side.handlers.ban_handler import (
     add_ban,
     get_banned_users,
@@ -15,15 +16,11 @@ from tlsocket.server_side.handlers.client_handler import (
     accept_new_client,
     broadcast,
     clean_up_client,
-    clients,
     handle_messages,
     kick_user,
-    nicknames,
-    pending_logins,
     read_line,
-    user_sessions,
+    registry,
 )
-from tlsocket.server_side.handlers.lock import state_lock
 from tlsocket.server_side.logs_management.record_logs import (
     brute_force_detector,
     log_event,
@@ -104,16 +101,9 @@ def handle_new_connection(raw_client, address):
                 if len(parts) == 3:
                     _, username, password = parts
                     username = username.strip().lower()
-                    already_online = False
-
-                    # Check whether the username has been used
-                    with state_lock:
-                        if username in nicknames or username in pending_logins:
-                            already_online = True
-                        else:
-                            already_online = False
-                            pending_logins.add(username)
-                            reserved_username = username
+                    already_online = not registry.reserve_username(username)
+                    if not already_online:
+                        reserved_username = username
 
                     if already_online:
                         client.sendall(b"ERR ALREADY_LOGGED_IN\n")
@@ -124,8 +114,7 @@ def handle_new_connection(raw_client, address):
                     success, user_session = login(username, password)
                     if success and user_session:
                         if username in get_banned_users():
-                            with state_lock:
-                                pending_logins.discard(reserved_username)
+                            registry.release_reservation(reserved_username)
                             reserved_username = None
                             client.sendall(b"ERR BANNED\n")
                             log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
@@ -133,15 +122,13 @@ def handle_new_connection(raw_client, address):
                         session = user_session
                         log_event("LOGIN_SUCCESS", username=username, ip=ip_addr)
                     elif success and not user_session:
-                        with state_lock:
-                            pending_logins.discard(reserved_username)
+                        registry.release_reservation(reserved_username)
                         reserved_username = None
                         client.sendall(b"ERR BANNED\n")
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                         continue
                     else:
-                        with state_lock:
-                            pending_logins.discard(reserved_username)
+                        registry.release_reservation(reserved_username)
                         reserved_username = None
                         client.sendall(b"ERR WRONG_AUTH\n") # Decline due to wrong information
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
@@ -186,12 +173,9 @@ def handle_new_connection(raw_client, address):
                 
         nickname = session["username"]
 
-        with state_lock:
-            clients.append(client)
-            nicknames.append(nickname)
-            user_sessions[client] = session
-            pending_logins.discard(nickname)
-            reserved_username = None
+        nickname = session["username"]
+        registry.add(client, Session(username=nickname, role=session["role"]))
+        reserved_username = None
 
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")
@@ -212,8 +196,7 @@ def handle_new_connection(raw_client, address):
 
     finally:
         if reserved_username is not None:
-            with state_lock:
-                pending_logins.discard(reserved_username)
+            registry.release_reservation(reserved_username)
 
 def receive():
     while True:
@@ -243,13 +226,7 @@ def server_console_input():
                     broadcast(f"MSG {target_user} is now an '{new_role}!\n".encode()) # Send the announcement to all users
                     log_event("SET", username=target_user, extra_info=f"new_role={new_role}") 
 
-                    target_sock = None
-                    with state_lock:
-                        for sock, sess in user_sessions.items():
-                            if sess.get("username") == target_user:
-                                sess["role"] = new_role
-                                target_sock = sock
-                                break
+                    target_sock = registry.set_role(target_user, new_role)
 
                     if target_sock:
                         try:
@@ -320,19 +297,15 @@ def main():
         thread.join()
     except KeyboardInterrupt:
         print("\nServer is shutting down...")
-        with state_lock:
-            for client in clients:
-                try:
-                    client.close()
-                except OSError:
-                    pass
+        for client in registry.snapshot():
+            try:
+                client.close()
+            except OSError:
+                pass
+        registry.reset()
 
-            clients.clear()
-            nicknames.clear()
-            user_sessions.clear()
-
-            sock.close()
-            sys.exit()
+        sock.close()
+        sys.exit()
 
 
 if __name__ == "__main__":

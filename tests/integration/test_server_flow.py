@@ -78,16 +78,16 @@ def test_disconnect_cleans_up_server_state(make_client):
     alice.recv_line()
     alice.send("LOGIN alice pw123")
     alice.recv_line()
-    assert "alice" in ch.nicknames
+    assert ch.registry.by_name("alice") is not None
 
     alice.close()
 
     deadline = time.time() + 2
-    while "alice" in ch.nicknames and time.time() < deadline:
+    while ch.registry.by_name("alice") is not None and time.time() < deadline:
         time.sleep(0.05)
 
-    assert "alice" not in ch.nicknames
-    assert ch.ip_connection_counts == {}
+    assert ch.registry.by_name("alice") is None
+    assert ch.registry._ip_counts == {}
 
 def test_register_rate_limiter_per_ip(make_client):
     from tlsocket.config import MAX_REGISTER_ATTEMPTS
