@@ -176,7 +176,7 @@ def handle_new_connection(raw_client, address, context):
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
                         continue
                 else:
-                    client.sendall(error(ErrorCode.INVALID_FORMAT))
+                    client.sendall(error(ErrorCode.INVALID_FORMAT).encode())
                     continue
             # Register new users
             elif line.startswith("REGISTER "):
@@ -195,7 +195,7 @@ def handle_new_connection(raw_client, address, context):
                         client.sendall(f"ERR {msg}\n".encode()) # Show error message
                         log_event("REGISTER_FAILED", username=username, ip=ip_addr, extra_info=f"reason={msg}")
                 else:
-                    client.sendall(error(ErrorCode.INVALID_FORMAT))
+                    client.sendall(error(ErrorCode.INVALID_FORMAT).encode())
                     log_event("REGISTER_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_FORMAT")
                 continue
             else:
