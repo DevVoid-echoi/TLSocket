@@ -1,6 +1,7 @@
 import sys
 
 from tlsocket.config import MAX_LINE_LENGTH
+from tlsocket.protocol import Command, chat_message, format_command
 
 stop_threads = False
 
@@ -76,7 +77,7 @@ def write(client, nickname):
                 if not target_user:
                     print("Usage: /kick <username>")
                     continue
-                client.send(f"KICK {target_user}\n".encode())
+                client.send(format_command(Command.KICK, target_user).encode())
                 continue
             # Send BAN command to the server for permission validation
             elif cmd.lower().startswith("/ban "):
@@ -84,14 +85,14 @@ def write(client, nickname):
                 if not target_user:
                     print("Usage: /ban <username>")
                     continue
-                client.send(f"BAN {target_user}\n".encode())
+                client.send(format_command(Command.BAN, target_user).encode())
                 continue
             elif cmd.lower().startswith("/unban "):
                 target_user = cmd[7:].strip()
                 if not target_user:
                     print("Usage: /unban <username>")
                     continue
-                client.send(f"UNBAN {target_user}\n".encode())
+                client.send(format_command(Command.UNBAN, target_user).encode())
             elif cmd.lower().startswith("/set "):
                 parts = cmd[5:].strip().split(maxsplit=1)
                 if len(parts) != 2:
@@ -99,9 +100,9 @@ def write(client, nickname):
                     continue
                 target_user = parts[0].strip().lower()
                 new_role = parts[1].strip().lower()
-                client.send(f"SET {target_user} {new_role}\n".encode())
+                client.send(format_command(Command.SET, target_user, new_role).encode())
             elif cmd:
-                client.send(f"MSG {user_input}\n".encode())
+                client.send(chat_message(user_input).encode())
 
         except (KeyboardInterrupt, EOFError):
             """Allow quit from keyboard and disconnect when receive an error"""

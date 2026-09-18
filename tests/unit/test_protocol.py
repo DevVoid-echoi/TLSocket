@@ -1,6 +1,14 @@
 import pytest
 
-from tlsocket.protocol import Command, ErrorCode, chat_message, error, ok, parse_command
+from tlsocket.protocol import (
+    Command,
+    ErrorCode,
+    chat_message,
+    error,
+    format_command,
+    ok,
+    parse_command,
+)
 
 
 def test_parse_command_recognizes_known_command():
@@ -40,3 +48,12 @@ def test_chat_message():
 
 def test_command_compares_equal_to_plain_string():
     assert Command.LOGIN == "LOGIN"
+
+def test_format_command_with_args():
+    assert format_command(Command.KICK, "alice") == "KICK alice\n"
+
+def test_format_command_with_multiple_args():
+    assert format_command(Command.LOGIN, "alice", "pw123") == "LOGIN alice pw123\n"
+
+def test_format_command_without_args():
+    assert format_command(Command.MSG) == "MSG\n"

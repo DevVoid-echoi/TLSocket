@@ -44,3 +44,7 @@ def chat_message(text: str) -> str:
     if not text:
         raise ValueError("chat_message() requires non-empty text")
     return f"MSG {text}\n"
+
+def format_command(command: Command, *args: str) -> str:
+    parts = " ".join(args)
+    return f"{command.value} {parts}\n" if parts else f"{command.value}\n"
