@@ -1,8 +1,8 @@
 import json
 import os
 from collections import defaultdict
-from collections.abc import Iterable
-from datetime import datetime, timedelta
+from collections.abc import Callable, Iterable
+from datetime import datetime, timedelta, timezone
 
 from tlsocket.config import (
     BLOCK_DURATION,
@@ -15,7 +15,12 @@ from tlsocket.security.logger import log_alert
 
 
 class BruteForceDetector:
-    def __init__(self, max_attempts: int=MAX_LOGIN_ATTEMPTS, window_seconds: int=LOGIN_WINDOW, block_duration: int=BLOCK_DURATION):
+    def __init__(self,
+                max_attempts: int=MAX_LOGIN_ATTEMPTS,
+                window_seconds: int=LOGIN_WINDOW,
+                block_duration: int=BLOCK_DURATION,
+                clock: Callable[[], datetime] = lambda: datetime.now(timezone.utc)
+    ) -> None:
         # Initialize the maximum number of allowed failed attempts and the time window
         self.max_attempts = max_attempts
         self.window_seconds = window_seconds
@@ -25,6 +30,7 @@ class BruteForceDetector:
         self.violation_count: dict[str, int] = defaultdict(int)  # Dictionary to keep track of violation counts for each IP
         self.blocked_ips: dict[str,datetime] = {} # Dictionary to keep track of blocked IPs and their unblock time
         self.db_file = BRUTE_FORCE_STATE_FILE  # Path to the JSON file for saving state
+        self._clock = clock
         self.load_state()
 
     def save_state(self) -> None:
@@ -48,13 +54,13 @@ class BruteForceDetector:
                     self.violation_count[ip] = count
 
                 for ip, unblock_time_str in data.get("blocked_ips", {}).items():
-                    self.blocked_ips[ip] = datetime.strptime(unblock_time_str, "%Y-%m-%d %H:%M:%S")
+                    self.blocked_ips[ip] = datetime.strptime(unblock_time_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             except Exception as e:
                 print(f"[ERROR] Failed to load state from {self.db_file}: {e}")
 
     def _parse_timestamp(self, date_str: str, time_str: str) -> datetime:
         # Convert date and time strings into a datetime object
-        return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S")
+        return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 
     def _get_ban_duration(self, ip:str) -> int:
         count = self.violation_count[ip]
@@ -73,7 +79,7 @@ class BruteForceDetector:
         if ip not in self.blocked_ips:
             return False
         
-        if datetime.now() > self.blocked_ips[ip]:
+        if self._clock() > self.blocked_ips[ip]:
             del self.blocked_ips[ip]
             self.save_state()  # Save the state after unblocking the IP
             return False
@@ -83,7 +89,7 @@ class BruteForceDetector:
     def get_remaining_ban_time(self, ip:str) -> int:
         if not self.is_ip_blocked(ip):
             return 0
-        remaining = (self.blocked_ips[ip] - datetime.now()).total_seconds()
+        remaining = (self.blocked_ips[ip] - self._clock()).total_seconds()
         return max(0, int(remaining))
 
     def process_record(self, record: LogRecord) -> None:

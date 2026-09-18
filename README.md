@@ -153,6 +153,8 @@ Anything else typed is sent as a chat message.
 
 ## Log Format
 
+Timestamps are UTC (not the server's local time).
+
 ```text
 2026-08-27 15:00:15 INFO LOGIN_SUCCESS username=alice ip=127.0.0.1
 2026-08-27 15:00:22 WARNING LOGIN_FAILED username=bob ip=127.0.0.1

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tlsocket.config import ALERT_LOG
@@ -29,7 +29,7 @@ alert_logger = setup_alert_logger()
 
 def log_alert(ip: str, failed_attempts: int, window_seconds: int) -> None:
     # Get the current timestamp as a formatted string
-    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     # Create the alert message
     alert_msg = (f"[ALERT] Possible brute-force attack | "
                  f"IP={ip} | FailedAttempts={failed_attempts} | Window={window_seconds}s")
