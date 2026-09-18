@@ -5,7 +5,7 @@ import threading
 
 from tlsocket.auth.authentication import login, register, set_user_role
 from tlsocket.config import CERT_FILE, HOST, KEY_FILE, MAX_REGISTER_ATTEMPTS, PORT, REGISTER_WINDOW
-from tlsocket.protocol import ErrorCode, error, ok
+from tlsocket.protocol import ErrorCode, chat_message, error, ok
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.server_side.client_registry import Session
 from tlsocket.server_side.handlers.ban_handler import (
@@ -222,7 +222,7 @@ def handle_new_connection(raw_client, address, context):
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")
         client.sendall(f"OK Connected as {nickname}, role:{session['role']}\n".encode())
-        broadcast(f"MSG {nickname} joined the chat!\n".encode(), sender=client)
+        broadcast(chat_message(f"{nickname} joined the chat!").encode(), sender=client)
 
         thread = threading.Thread(target=handle_messages, args=(client, real_ip_addr), daemon=True)
         thread.start()
@@ -254,24 +254,24 @@ def server_console_input():
 
                 if set_user_role(target_user, new_role):
                     print(f"[SERVER CONSOLE] Success: User '{target_user}' is now an '{new_role}'!")
-                    broadcast(f"MSG {target_user} is now an '{new_role}!\n".encode()) # Send the announcement to all users
+                    broadcast(chat_message(f"{target_user} is now an '{new_role}!").encode()) # Send the announcement to all users
                     log_event("SET", username=target_user, extra_info=f"new_role={new_role}") 
 
                     target_sock = registry.set_role(target_user, new_role)
 
                     if target_sock:
                         try:
-                            target_sock.sendall(f"MSG {'-' * 50}\n".encode())
-                            target_sock.sendall(f"MSG [SYSTEM] Your role has been updated to '{new_role}' by Server Admin!\n".encode())
+                            target_sock.sendall(chat_message('-' * 50).encode())
+                            target_sock.sendall(chat_message(f"[SYSTEM] Your role has been updated to '{new_role}' by Server Admin!").encode())
                             if new_role in ["moderator", "admin"]:
-                                target_sock.sendall(f"MSG {'-' * 50}\n".encode())
-                                target_sock.sendall(b"MSG [SYSTEM] New commands unlocked:\n")
-                                target_sock.sendall(b"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n")
-                                target_sock.sendall(b"MSG - Type '/ban' <user_name> to ban a user from the chat room\n")
-                                target_sock.sendall(b"MSG - Type '/unban' <user_name> to unban a user\n")
+                                target_sock.sendall(chat_message('-' * 50).encode())
+                                target_sock.sendall(chat_message("[SYSTEM] New commands unlocked:").encode())
+                                target_sock.sendall(chat_message("- Type '/kick' <user_name> to kick a user out of the chat room").encode())
+                                target_sock.sendall(chat_message("- Type '/ban' <user_name> to ban a user from the chat room").encode())
+                                target_sock.sendall(chat_message("- Type '/unban' <user_name> to unban a user").encode())
                                 if new_role == "admin":
-                                    target_sock.send(b"MSG - Type '/set' <username> <role> to set a new role for a user\n")
-                            target_sock.sendall(f"MSG {'-' * 50}\n".encode())
+                                    target_sock.send(chat_message("- Type '/set' <username> <role> to set a new role for a user").encode())
+                            target_sock.sendall(chat_message('-' * 50).encode())
 
                         except OSError as e:
                             print(f"[SERVER CONSOLE] Error sending role update to '{target_user}': {e}")
@@ -281,21 +281,21 @@ def server_console_input():
             elif cmd.startswith("/kick "):
                 target_user = cmd[6:].strip().lower()
                 if kick_user(target_user):
-                    broadcast(f"MSG {target_user} was kicked by server admin!\n".encode()) # Send the announcement to all users
+                    broadcast(chat_message(f"{target_user} was kicked by server admin!").encode()) # Send the announcement to all users
                     print(f'{target_user} was kicked!')
                     log_event("KICK", username=target_user, extra_info="by=server_admin")
             elif cmd.startswith("/ban "):
                 target_user = cmd[5:].strip().lower()
                 add_ban(target_user)
                 kick_user(target_user)  # Disconnect the user if they are currently online
-                broadcast(f"MSG {target_user} was banned by server admin!\n".encode()) # Send the announcement to all users
+                broadcast(chat_message(f"{target_user} was banned by server admin!").encode()) # Send the announcement to all users
                 print(f'{target_user} was banned!')
                 log_event("BAN", username=target_user, extra_info="by=server_admin")
             elif cmd.startswith("/unban "):
                 target_user = cmd[7:].strip().lower()
                 remove_ban(target_user)
                 print(f'{target_user} was unbanned!')
-                broadcast(f"MSG {target_user} was unbanned by server admin!\n".encode()) # Send the announcement to all users
+                broadcast(chat_message(f"{target_user} was unbanned by server admin!").encode()) # Send the announcement to all users
                 log_event("UNBAN", username=target_user, extra_info="by=server_admin")
 
         except (EOFError, KeyboardInterrupt):
