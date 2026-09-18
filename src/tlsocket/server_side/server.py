@@ -31,11 +31,52 @@ TEST_MODE = False  # Set to True to enable test mode for IP address overriding
 
 register_limiter = SlidingWindowLimiter(max_events=MAX_REGISTER_ATTEMPTS, window_seconds=REGISTER_WINDOW)
 
-# Initialised by main(); referenced as globals by handle_new_connection()/receive().
-context: ssl.SSLContext | None = None
-raw_server_socket: socket.socket | None = None
+class ChatServer:
+    def __init__(self, host: str | None = None, port: int | None = None) -> None:
+        self.host = host if host is not None else HOST
+        self.port = port if port is not None else PORT
+        self.context: ssl.SSLContext | None = None
+        self.socket: socket.socket | None = None
+        self._accept_thread: threading.Thread | None = None
 
-def handle_new_connection(raw_client, address):
+    def start(self) -> int:
+        self.context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        self.context.load_cert_chain(certfile=str(CERT_FILE), keyfile=str(KEY_FILE))
+
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.socket.bind((self.host, self.port))
+        self.socket.listen()
+        self.port = self.socket.getsockname()[1]
+
+        self._accept_thread = threading.Thread(target=self._accept_loop, daemon=True)
+        self._accept_thread.start()
+        return self.port
+
+    def _accept_loop(self) -> None:
+        while True:
+            try:
+                raw_client, address = self.socket.accept()
+            except OSError:
+                break
+            print(f"Connected with {address}")
+            threading.Thread(
+                target=handle_new_connection,
+                args=(raw_client, address, self.context),
+                daemon=True,
+            ).start()
+
+    def stop(self) -> None:
+        if self.socket is not None:
+            self.socket.close()
+        if self._accept_thread is not None:
+            self._accept_thread.join(timeout=2)
+
+    def wait(self) -> None:
+        if self._accept_thread is not None:
+            self._accept_thread.join()
+
+def handle_new_connection(raw_client, address, context):
     """Handle a new client connection, perform authentication, and start message handling."""
     real_ip_addr = address[0]
     ip_addr = real_ip_addr
@@ -198,17 +239,6 @@ def handle_new_connection(raw_client, address):
         if reserved_username is not None:
             registry.release_reservation(reserved_username)
 
-def receive():
-    while True:
-        try:
-            raw_client, address = raw_server_socket.accept()
-
-        except OSError:
-            break
-
-        print(f"Connected with {str(address)}")
-        threading.Thread(target=handle_new_connection, args=(raw_client, address), daemon=True).start()
-
 def server_console_input():
     while True:
         try:
@@ -270,31 +300,13 @@ def server_console_input():
         except (EOFError, KeyboardInterrupt):
             break
 
-def create_server(host: str | None = None, port: int | None = None):
-    global context, raw_server_socket
-    
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    context.load_cert_chain(certfile=str(CERT_FILE), keyfile=str(KEY_FILE))
-    
-    raw_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    raw_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    raw_server_socket.bind((host if host is not None else HOST,
-                            port if port is not None else PORT))
-    raw_server_socket.listen()
-    actual_port = raw_server_socket.getsockname()[1]
-
-    accept_thread = threading.Thread(target=receive, daemon=True)
-    accept_thread.start()
-    return accept_thread, raw_server_socket, actual_port
-
-
-
 def main():
-    thread, sock, port = create_server()
+    server = ChatServer()
+    port = server.start()
     print(f"[TLS SERVER] Listening on {HOST}:{port}...")
     threading.Thread(target=server_console_input, daemon=True).start()
     try:
-        thread.join()
+        server.wait()
     except KeyboardInterrupt:
         print("\nServer is shutting down...")
         for client in registry.snapshot():
@@ -304,7 +316,7 @@ def main():
                 pass
         registry.reset()
 
-        sock.close()
+        server.stop()
         sys.exit()
 
 

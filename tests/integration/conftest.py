@@ -29,12 +29,12 @@ def running_server(tmp_path, monkeypatch):
     rl.brute_force_detector.failed_attempts_history.clear()
     srv.register_limiter.reset()
 
-    thread, sock, port = srv.create_server(host="127.0.0.1", port=0)
+    chat_server = srv.ChatServer(host="127.0.0.1", port=0)
+    port = chat_server.start()
 
     yield port
 
-    sock.close()
-    thread.join(timeout=2)
+    chat_server.stop()
 
 class Connection:
     """Bọc quanh 1 client TLS thật: gửi/nhận theo dòng, tự giữ buffer dư
