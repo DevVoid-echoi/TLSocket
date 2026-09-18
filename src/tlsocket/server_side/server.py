@@ -5,6 +5,7 @@ import threading
 
 from tlsocket.auth.authentication import login, register, set_user_role
 from tlsocket.config import CERT_FILE, HOST, KEY_FILE, MAX_REGISTER_ATTEMPTS, PORT, REGISTER_WINDOW
+from tlsocket.protocol import ErrorCode, error, ok
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.server_side.client_registry import Session
 from tlsocket.server_side.handlers.ban_handler import (
@@ -95,7 +96,7 @@ def handle_new_connection(raw_client, address, context):
     
     if not accept_new_client(client, real_ip_addr):
         try:
-            client.sendall(b"ERR CONNECTION_LIMIT_REACHED.\n")
+            client.sendall(error(ErrorCode.CONNECTION_LIMIT_REACHED).encode())
         except OSError:
             pass
         log_event("CONNECTION_LIMIT_REACHED", extra_info=f"ip={real_ip_addr}")
@@ -127,13 +128,13 @@ def handle_new_connection(raw_client, address, context):
                         # print(f"[TEST MODE] Real IP {real_ip_addr} overridden with Fake IP: {ip_addr}")
                         log_test_event("USER_CONNECTED", ip=ip_addr, extra_info=f"real_ip={real_ip_addr}")
                 else: 
-                    client.sendall(b"ERR PERMISSION_DENIED.\n")
+                    client.sendall(error(ErrorCode.PERMISSION_DENIED).encode())
                 continue
                 
             if brute_force_detector.is_ip_blocked(ip_addr):
                 remaining_time = brute_force_detector.get_remaining_ban_time(ip_addr)
                 print(f"[SECURITY] Refused connection from blocked IP: {ip_addr} ({remaining_time}s remaining)")
-                client.sendall(f"ERR RATE_LIMIT_EXCEEDED Blocked due to brute-force attempts. Try again in {remaining_time}s.\n".encode())
+                client.sendall(error(ErrorCode.RATE_LIMIT_EXCEEDED, f"Blocked due to brute-force attempts. Try again in {remaining_time}s.").encode())
                 log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info=f"reason=BRUTE_FORCE_DETECTION remaining_sec={remaining_time}")
                 break
 
@@ -147,7 +148,7 @@ def handle_new_connection(raw_client, address, context):
                         reserved_username = username
 
                     if already_online:
-                        client.sendall(b"ERR ALREADY_LOGGED_IN\n")
+                        client.sendall(error(ErrorCode.ALREADY_LOGGED_IN).encode())
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=ALREADY_LOGGED_IN")
                         reserved_username = None
                         continue
@@ -157,7 +158,7 @@ def handle_new_connection(raw_client, address, context):
                         if username in get_banned_users():
                             registry.release_reservation(reserved_username)
                             reserved_username = None
-                            client.sendall(b"ERR BANNED\n")
+                            client.sendall(error(ErrorCode.BANNED).encode())
                             log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                             continue
                         session = user_session
@@ -165,22 +166,22 @@ def handle_new_connection(raw_client, address, context):
                     elif success and not user_session:
                         registry.release_reservation(reserved_username)
                         reserved_username = None
-                        client.sendall(b"ERR BANNED\n")
+                        client.sendall(error(ErrorCode.BANNED).encode())
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                         continue
                     else:
                         registry.release_reservation(reserved_username)
                         reserved_username = None
-                        client.sendall(b"ERR WRONG_AUTH\n") # Decline due to wrong information
+                        client.sendall(error(ErrorCode.WRONG_AUTH).encode()) # Decline due to wrong information
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
                         continue
                 else:
-                    client.sendall(b"ERR INVALID_FORMAT\n")
+                    client.sendall(error(ErrorCode.INVALID_FORMAT))
                     continue
             # Register new users
             elif line.startswith("REGISTER "):
                 if not register_limiter.allow(ip_addr):
-                    client.sendall(b"ERR RATE_LIMIT_EXCEEDED Too many registration attempts. Try again later!\n")
+                    client.sendall(error(ErrorCode.RATE_LIMIT_EXCEEDED, "ERR RATE_LIMIT_EXCEEDED Too many registration attempts. Try again later!").encode())
                     log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info="reason=REGISTER_FLOOD")
                     continue
                 parts = line.split(" ", 2)
@@ -188,17 +189,17 @@ def handle_new_connection(raw_client, address, context):
                     _, username, password = parts
                     success, msg = register(username, password)
                     if success:
-                        client.sendall(f"OK {msg}\n".encode()) # Send OK message if succeess
+                        client.sendall(ok(f"{msg}").encode()) # Send OK message if succeess
                         log_event("REGISTER_SUCCESS", username=username, ip=ip_addr)
                     else:
                         client.sendall(f"ERR {msg}\n".encode()) # Show error message
                         log_event("REGISTER_FAILED", username=username, ip=ip_addr, extra_info=f"reason={msg}")
                 else:
-                    client.sendall(b"ERR INVALID_FORMAT\n")
+                    client.sendall(error(ErrorCode.INVALID_FORMAT))
                     log_event("REGISTER_FAILED", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_FORMAT")
                 continue
             else:
-                client.sendall(b"ERR INVALID_COMMAND\n")
+                client.sendall(error(ErrorCode.INVALID_COMMAND).encode())
                 # Protocol errors are not credential-guessing: log them, but keep
                 # them out of brute-force scoring (which only reacts to LOGIN_FAILED).
                 log_event("INVALID_COMMAND", username="Unknown", ip=ip_addr, extra_info="reason=INVALID_COMMAND")

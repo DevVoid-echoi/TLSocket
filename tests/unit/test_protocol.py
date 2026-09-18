@@ -33,7 +33,7 @@ def test_error_without_detail():
     assert error(ErrorCode.ALREADY_LOGGED_IN) == "ERR ALREADY_LOGGED_IN\n"
 
 def test_error_with_detail():
-    assert error(ErrorCode.RATE_LIMIT_REACHED, "Try again in 10s") == "ERR RATE_LIMIT_REACHED Try again in 10s\n"
+    assert error(ErrorCode.RATE_LIMIT_EXCEEDED, "Try again in 10s") == "ERR RATE_LIMIT_EXCEEDED Try again in 10s\n"
 
 def test_chat_message():
     assert chat_message("alice: hello") == "MSG alice: hello\n"
