@@ -9,7 +9,7 @@ from tlsocket.protocol import Command, chat_message, format_command
 
 class ServerRejectedError(Exception):
     def __init__(self, detail: str):
-        super().__intit__(detail)
+        super().__init__(detail)
         self.detail = detail
 
 def connect(host: str, port: int, cert_file) -> ssl.SSLSocket:
