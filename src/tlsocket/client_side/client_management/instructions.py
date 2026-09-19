@@ -1,7 +1,7 @@
 from tlsocket.auth.rbac import Permission, has_permission
 
 
-def print_instructions(nickname, user_role = "user"):
+def print_instructions(user_role: str = "user") -> None:
     """Print instructions for users and special instructions for admin"""
     print("-" * 50)
     print(" CHAT INSTRUCTIONS:")

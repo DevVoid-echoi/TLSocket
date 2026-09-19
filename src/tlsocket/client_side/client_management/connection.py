@@ -1,10 +1,56 @@
+import socket
+import ssl
 import sys
+import time
+from pathlib import Path
 
 from tlsocket.config import MAX_LINE_LENGTH
+from tlsocket.protocol import Command, chat_message, format_command
+
+
+class ServerRejectedError(Exception):
+    def __init__(self, detail: str):
+        super().__init__(detail)
+        self.detail = detail
+
+def connect(host: str, port: int, cert_file: str | Path) -> ssl.SSLSocket:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(str(cert_file))
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+
+    raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client = context.wrap_socket(raw,server_hostname=host)
+    client.connect((host,port))
+
+    client.settimeout(0.2)
+    line, _ = read_line(client, "")
+    client.settimeout(None)
+    if line is not None:
+        client.close()
+        detail = line[4:] if line.startswith("ERR ") else line
+        raise ServerRejectedError(detail)
+
+    return client
+
+def connect_with_backoff(
+        host: str, port: int, cert_file: str | Path, max_retries: int = 5, base_delay: float = 1.0
+) -> ssl.SSLSocket:
+    delay = base_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            return connect(host, port, cert_file)
+        except ServerRejectedError as e:
+            if attempt == max_retries:
+                raise
+            print(f">> {e.detail} - thử lại sau {delay: .0f}s ({attempt}/{max_retries})")
+            time.sleep(delay)
+            delay = min(delay * 2, 30)
+    raise AssertionError("unreachable")
 
 stop_threads = False
 
-def read_line(sock, buffer):
+def read_line(sock: ssl.SSLSocket, buffer: str) -> tuple[str | None, str]:
     """Read full-line messages"""
     while "\n" not in buffer:
         if len(buffer) > MAX_LINE_LENGTH:
@@ -20,7 +66,7 @@ def read_line(sock, buffer):
     line, buffer = buffer.split("\n", 1)
     return line.strip(), buffer
 
-def receive(client, nickname):
+def receive(client: ssl.SSLSocket, nickname: str) -> None:
     """Handle different types of received messages"""
     global stop_threads
     buffer = ""
@@ -51,7 +97,7 @@ def receive(client, nickname):
             break
             
 
-def write(client, nickname):
+def write(client: ssl.SSLSocket, nickname: str) -> None:
     """Handle different types of user input"""
     global stop_threads
     while not stop_threads:
@@ -76,7 +122,7 @@ def write(client, nickname):
                 if not target_user:
                     print("Usage: /kick <username>")
                     continue
-                client.send(f"KICK {target_user}\n".encode())
+                client.send(format_command(Command.KICK, target_user).encode())
                 continue
             # Send BAN command to the server for permission validation
             elif cmd.lower().startswith("/ban "):
@@ -84,14 +130,14 @@ def write(client, nickname):
                 if not target_user:
                     print("Usage: /ban <username>")
                     continue
-                client.send(f"BAN {target_user}\n".encode())
+                client.send(format_command(Command.BAN, target_user).encode())
                 continue
             elif cmd.lower().startswith("/unban "):
                 target_user = cmd[7:].strip()
                 if not target_user:
                     print("Usage: /unban <username>")
                     continue
-                client.send(f"UNBAN {target_user}\n".encode())
+                client.send(format_command(Command.UNBAN, target_user).encode())
             elif cmd.lower().startswith("/set "):
                 parts = cmd[5:].strip().split(maxsplit=1)
                 if len(parts) != 2:
@@ -99,9 +145,9 @@ def write(client, nickname):
                     continue
                 target_user = parts[0].strip().lower()
                 new_role = parts[1].strip().lower()
-                client.send(f"SET {target_user} {new_role}\n".encode())
+                client.send(format_command(Command.SET, target_user, new_role).encode())
             elif cmd:
-                client.send(f"MSG {user_input}\n".encode())
+                client.send(chat_message(user_input).encode())
 
         except (KeyboardInterrupt, EOFError):
             """Allow quit from keyboard and disconnect when receive an error"""

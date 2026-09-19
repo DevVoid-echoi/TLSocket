@@ -22,23 +22,19 @@ def running_server(tmp_path, monkeypatch):
     from tlsocket.server_side import server as srv
     from tlsocket.server_side.handlers import client_handler as ch
     from tlsocket.server_side.logs_management import record_logs as rl
-    ch.clients.clear()
-    ch.nicknames.clear()
-    ch.user_sessions.clear()
-    ch.pending_logins.clear()
-    ch.ip_connection_counts.clear()
-    ch.client_ips.clear()
+    ch.registry.reset()
+    ch.message_limiter.reset()
     rl.brute_force_detector.blocked_ips.clear()
     rl.brute_force_detector.violation_count.clear()
     rl.brute_force_detector.failed_attempts_history.clear()
     srv.register_limiter.reset()
 
-    thread, sock, port = srv.create_server(host="127.0.0.1", port=0)
+    chat_server = srv.ChatServer(host="127.0.0.1", port=0)
+    port = chat_server.start()
 
     yield port
 
-    sock.close()
-    thread.join(timeout=2)
+    chat_server.stop()
 
 class Connection:
     """Bọc quanh 1 client TLS thật: gửi/nhận theo dòng, tự giữ buffer dư

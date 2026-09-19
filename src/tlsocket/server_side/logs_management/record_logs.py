@@ -1,6 +1,6 @@
 import logging
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 
 from tlsocket.config import (
     BLOCK_DURATION,
@@ -80,7 +80,7 @@ def log_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra
             security_logger.warning(msg)
             security_file_handler.flush()
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     record=LogRecord(
         date=now.strftime("%Y-%m-%d"),
         time=now.strftime("%H:%M:%S"),
@@ -108,7 +108,7 @@ def log_test_event(event_type: str, username: str = "Unknown", ip: str = "N/A", 
             test_logger.warning(msg)
             test_file_handler.flush()
 
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     record=LogRecord(
         date=now.strftime("%Y-%m-%d"),
         time=now.strftime("%H:%M:%S"),

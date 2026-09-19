@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from tlsocket.server_side.handlers import client_handler as ch
 
 
@@ -78,16 +80,16 @@ def test_disconnect_cleans_up_server_state(make_client):
     alice.recv_line()
     alice.send("LOGIN alice pw123")
     alice.recv_line()
-    assert "alice" in ch.nicknames
+    assert ch.registry.by_name("alice") is not None
 
     alice.close()
 
     deadline = time.time() + 2
-    while "alice" in ch.nicknames and time.time() < deadline:
+    while ch.registry.by_name("alice") is not None and time.time() < deadline:
         time.sleep(0.05)
 
-    assert "alice" not in ch.nicknames
-    assert ch.ip_connection_counts == {}
+    assert ch.registry.by_name("alice") is None
+    assert ch.registry._ip_counts == {}
 
 def test_register_rate_limiter_per_ip(make_client):
     from tlsocket.config import MAX_REGISTER_ATTEMPTS
@@ -115,3 +117,16 @@ def test_message_flood_is_rate_limited(make_client):
 
     client.send("MSG one_too_many")
     assert client.recv_line().startswith("ERR RATE_LIMIT_EXCEEDED")
+
+def test_connect_with_backoff_raises_after_exhausting_retries(running_server, make_client):
+    from tlsocket.client_side.client_management.connection import (
+        ServerRejectedError,
+        connect_with_backoff,
+    )
+    from tlsocket.config import CERT_FILE, MAX_CONNECTIONS_PER_IP
+
+    port = running_server
+    _blockers = [make_client() for _ in range(MAX_CONNECTIONS_PER_IP)]
+
+    with pytest.raises(ServerRejectedError):
+        connect_with_backoff("localhost", port, CERT_FILE, max_retries=2, base_delay=0.05)

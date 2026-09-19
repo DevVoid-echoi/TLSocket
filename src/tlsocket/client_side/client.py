@@ -1,92 +1,70 @@
-import socket
 import ssl
 import sys
 import threading
 
 from tlsocket.client_side.client_management.connection import (
+    ServerRejectedError,
+    connect_with_backoff,
     read_line,
     receive,
     write,
 )
 from tlsocket.client_side.client_management.instructions import print_instructions
 from tlsocket.config import CERT_FILE, CLIENT_HOST, PORT
+from tlsocket.protocol import Command, format_command
 
-# TODO: Allow reconnect after connection limit reached
 
-def main():
+def main() -> None:
     """Connect using IPv4 and TCP then wrap the socket with SSL context"""
-    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-    context.load_verify_locations(str(CERT_FILE))
-    context.verify_mode = ssl.CERT_REQUIRED
-    context.check_hostname = True
-
-    raw_client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-
     try:
-        client = context.wrap_socket(raw_client, server_hostname=CLIENT_HOST)
-        client.connect((CLIENT_HOST, PORT))
+        client = connect_with_backoff(CLIENT_HOST, PORT, CERT_FILE)
+    except ServerRejectedError as e:
+        print(f"Connection refused: {e.detail}")
+        sys.exit(1)
     except (ssl.SSLError, OSError) as e:
         print(f"Connection error: {e}")
         sys.exit(1)
 
     buffer = ""
+    nickname = None
+    user_role = "user"
 
     """Print Register/Login options"""
     print("=== CHAT SYSTEM AUTHENTICATION ===")
-    while True:
+    while nickname is None:
         choice = input("Choose (1: Login, 2: Register): ").strip()
         username = input("Username: ").strip()
         password = input("Password: ").strip()
+        command = Command.LOGIN if choice == "1" else Command.REGISTER
 
-        """Send LOGIN request and check received message to see if user successfully loginned"""
+        try:
+            client.send(format_command(command, username, password).encode())
+            line, buffer = read_line(client, buffer)
+        except OSError:
+            line = None
+
+        if line is None: # Close connection if not receive any message
+            print(">> Server closed connection - Retrying...")
+            try:
+                client = connect_with_backoff(CLIENT_HOST, PORT, CERT_FILE)
+                buffer = ""
+            except ServerRejectedError as e:
+                print(f"Connection refused: {e.detail}")
+                sys.exit(1)
+            continue
+
         if choice == "1":
-            try:
-                client.send(f"LOGIN {username} {password}\n".encode())
-                line, buffer = read_line(client, buffer)
-                if line is None: # Close connection if not receive any message
-                    print(">> Server closed connection during registration.")
-                    client.close()
-                    sys.exit(1)
+            if line.startswith("OK"): # If succcessfully login, print the announcement and set nickname = username
+                print(">> Login successfully!")
+                nickname = username
+                if "role:" in line:
+                    user_role = line.split("role:")[1].strip()
+            else: # Show any login error
+                print(f">> Login error: {line}")
+        else:
+            print(f">> Register announcement: {line}")# Print the register announcement
 
-                if line and line.startswith("OK"): # If succcessfully login, print the announcement and set nickname = username
-                    print(">> Login successfully!")
-                    nickname = username
-                    user_role = "user"
-                    if "role:" in line:
-                        user_role = line.split("role:")[1].strip()
-                    print_instructions(nickname, user_role) # Print instructions based on the role of user
-                    break
-
-                else: # Show any login error
-                    print(f">> Login error: {line}")
-            except Exception as e:
-                print(f"Error during login: {e}")
-                client.close()
-                sys.exit(1)
-
-
-        """Send REGISTER request and check received message to see if user successfully registered"""
-        if choice == "2":
-            try:
-                client.send(f"REGISTER {username} {password}\n".encode())
-                line, buffer = read_line(client, buffer)
-                if line is None:# Close connection if not receive any message
-                    print(">> Server closed connection during registration.")
-                    client.close()
-                    sys.exit(1)
-
-                print(f">> Phản hồi đăng ký: {line}")# Print the register announcement
-            except Exception:
-                print("Error during registration.")
-                client.close()
-                sys.exit(1)
-
-    """Close connection if not receive any message or received an error message"""
-    if not line or line.startswith("ERR "):
-        msg = line[4:]
-        print(f"Connection refused: {msg}")
-        client.close()
-        sys.exit(1)
+    print_instructions(user_role) # Print instructions based on the role of user
 
     """Create receive thread and start thread"""
     receive_thread = threading.Thread(

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -20,7 +20,7 @@ def _failed(ip, ts):
         )
 
 def test_blocks_after_max_attempts_within_window(detector):
-    now = datetime.now().replace(microsecond=0)  # log chỉ lưu tới độ chính xác giây
+    now = datetime.now(timezone.utc).replace(microsecond=0)  # log chỉ lưu tới độ chính xác giây
     for i in range(3):
         detector.process_record(_failed("1.2.3.4", now + timedelta(seconds=i)))
 
@@ -43,7 +43,7 @@ def test_ignores_missing_ip(detector):
     assert detector.blocked_ips=={}
 
 def test_old_attempts_outside_window_are_pruned(detector):
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     detector.process_record(_failed("1.2.3.4", now))
     detector.process_record(_failed("1.2.3.4", now + timedelta(seconds=5)))
     assert "1.2.3.4" not in detector.blocked_ips
@@ -61,7 +61,7 @@ def test_old_attempts_outside_window_are_pruned(detector):
 def test_escalating_ban_duration(detector, prior_violations, multiplier):
     ip = "1.2.3.4"
     detector.violation_count[ip] = prior_violations
-    now = datetime.now().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     for i in range (3):
         detector.process_record(_failed(ip, now + timedelta(seconds=i)))
 
@@ -69,11 +69,11 @@ def test_escalating_ban_duration(detector, prior_violations, multiplier):
     assert detector.blocked_ips[ip] == last_ts + timedelta(seconds=10 * multiplier)
 
 def test_is_ip_blocked_true_while_active(detector):
-    detector.blocked_ips["1.2.3.4"] = datetime.now() + timedelta(seconds=30)
+    detector.blocked_ips["1.2.3.4"] = datetime.now(timezone.utc) + timedelta(seconds=30)
     assert detector.is_ip_blocked("1.2.3.4") is True
 
 def test_is_ip_blocked_false_and_self_cleans_after_expiry(detector):
-    detector.blocked_ips["1.2.3.4"] = datetime.now() - timedelta(seconds=1)
+    detector.blocked_ips["1.2.3.4"] = datetime.now(timezone.utc) - timedelta(seconds=1)
     assert detector.is_ip_blocked("1.2.3.4") is False
     assert "1.2.3.4" not in detector.blocked_ips
 
@@ -81,7 +81,7 @@ def test_is_ip_blocked_unknown_ip(detector):
     assert detector.is_ip_blocked("9.9.9.9") is False
 
 def test_get_remaining_ban_time_while_blocked(detector):
-    detector.blocked_ips["1.2.3.4"] = datetime.now() + timedelta(seconds=30)
+    detector.blocked_ips["1.2.3.4"] = datetime.now(timezone.utc) + timedelta(seconds=30)
     remaining = detector.get_remaining_ban_time("1.2.3.4")
     assert 0 < remaining <= 30
 
@@ -90,7 +90,7 @@ def test_get_remaining_ban_time_when_not_blocked(detector):
 
 def test_save_and_load_state_roundtrip(detector):
     ip = "1.2.3.4"
-    now = datetime.now()
+    now = datetime.now(timezone.utc)
     for i in range(3):
         detector.process_record(_failed(ip, now + timedelta(seconds=i)))
     assert detector.db_file.exists()
@@ -101,7 +101,7 @@ def test_save_and_load_state_roundtrip(detector):
 
 def test_detect_brute_force_stream_blocks_ip_from_records(tmp_path, monkeypatch):
     monkeypatch.setattr(bfd, "BRUTE_FORCE_STATE_FILE", tmp_path / "state.json")
-    now = datetime.now().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     records = [_failed("1.2.3.4", now + timedelta(seconds=i)) for i in range(3)]
 
     bfd.detect_brute_force_stream(records, max_attempts=3, window_seconds=60)

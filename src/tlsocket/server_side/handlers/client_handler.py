@@ -1,5 +1,3 @@
-from collections import defaultdict
-
 from tlsocket.auth.authentication import set_user_role
 from tlsocket.auth.rbac import Permission, has_permission
 from tlsocket.config import (
@@ -8,22 +6,14 @@ from tlsocket.config import (
     MAX_MESSAGES_PER_WINDOW,
     MESSAGE_RATE_WINDOW,
 )
+from tlsocket.protocol import ErrorCode, chat_message, error
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.security.validation import parse_and_validate_command, validate_message
+from tlsocket.server_side.client_registry import ClientRegistry
 from tlsocket.server_side.handlers.ban_handler import add_ban, remove_ban
-from tlsocket.server_side.handlers.lock import ip_lock, send_lock, state_lock
 from tlsocket.server_side.logs_management.record_logs import log_event
 
-clients = []
-nicknames = []
-user_sessions = {}
-
-ip_connection_counts = defaultdict(int)
-
-client_ips = {}
-
-pending_logins = set()
-
+registry = ClientRegistry(max_connections_per_ip=MAX_CONNECTIONS_PER_IP)
 message_limiter = SlidingWindowLimiter(max_events=MAX_MESSAGES_PER_WINDOW, window_seconds=MESSAGE_RATE_WINDOW)
 
 def read_line(sock, buffer):
@@ -42,54 +32,24 @@ def read_line(sock, buffer):
     line, buffer = buffer.split("\n", 1)
     return line.strip(), buffer
 
-def rekey_client_ip(old_sock, new_sock):
-    with ip_lock:
-        if old_sock in client_ips:
-            client_ip = client_ips.pop(old_sock)
-            client_ips[new_sock] = client_ip
-
 def accept_new_client(client_socket, client_ip):
-    with ip_lock:
-        if ip_connection_counts[client_ip] >= MAX_CONNECTIONS_PER_IP:
-            return False
-        
-        ip_connection_counts[client_ip] += 1
-        client_ips[client_socket] = client_ip
-        return True
-
+    return registry.try_reserve_ip_slot(client_socket, client_ip)
 
 def clean_up_client(client, disconnect_msg, client_ip=None):
     """Clean up disconnected users"""
-    with state_lock:
-        if client in clients:
-            index = clients.index(client)
-            nickname = nicknames.pop(index)
-            clients.pop(index)
-        else:
-            nickname = None
-            
-        user_sessions.pop(client, None)
-
+    session = registry.remove(client)
     message_limiter.forget(client)
-    
-    with ip_lock:
-        # Prefer the IP recorded at accept time; fall back to the caller-provided IP.
-        recorded_ip = client_ips.pop(client, None) or client_ip
-
-        if recorded_ip and recorded_ip in ip_connection_counts:
-            ip_connection_counts[recorded_ip] -= 1
-            if ip_connection_counts[recorded_ip] <= 0:
-                del ip_connection_counts[recorded_ip]
+    registry.release_ip_slot(client, fallback_ip=client_ip)
 
     try:
         client.close()
     except OSError:
         pass
 
-    if nickname: # Print annoucement that the disconnected user left the chat
-        print(f"Client {nickname} {disconnect_msg}!")
-        broadcast(f"MSG {nickname} left the chat!\n",sender=client)
-        log_event("USER_DISCONNECTED", username=nickname)
+    if session: # Print annoucement that the disconnected user left the chat
+        print(f"Client {session.username} {disconnect_msg}!")
+        broadcast(chat_message(f"{session.username} left the chat!").encode(),sender=client)
+        log_event("USER_DISCONNECTED", username=session.username)
 
 
 def broadcast(message, sender=None):
@@ -97,43 +57,19 @@ def broadcast(message, sender=None):
     if isinstance(message, str):
         message = message.encode("utf-8") # Encode the message
 
-    with state_lock:
-        targets = list(clients) # Get the list of user
-
-    disconnected_clients = []
-
-    for client in targets:
-        if client != sender:
-            try:
-                with send_lock:
-                    client.sendall(message) # Send the message to all users except for the sender
-            except (BrokenPipeError, ConnectionResetError, OSError) as e:
-                print(f"Error sending message: {e}")
-                disconnected_clients.append(client) # Disconnect the user if get an error while sending the message
-    for client in disconnected_clients:
-        clean_up_client(client, "disconnected") # Clean up the disconnected client
+    for failed_client in registry.broadcast(message, sender=sender):
+        clean_up_client(failed_client, "disconnected") # Clean up the disconnected client
 
 def kick_user(name):
     """Remove the user in kick command"""
-    client_to_kick = None
-    with state_lock:
-        if name in nicknames:
-            index = nicknames.index(name)
-            client_to_kick = clients[index]
-            target_ip = client_ips.get(client_to_kick)
+    client_to_kick = registry.by_name(name)
+    if not client_to_kick:
+        return False
 
-    if client_to_kick:
-        try:
-            # Print the kick announcement and close the connection of the kicked user
-            with send_lock:
-                client_to_kick.send(b"MSG You were kicked!\n")
-            client_to_kick.close()
-        except Exception: # nosec B110 - best-effort: client đã bị đóng, không còn gì để retry
-            pass
-        clean_up_client(client_to_kick, "kicked", target_ip)
-        return True
-    return False
-
+    registry.send(client_to_kick,chat_message("You were kicked!").encode())
+    clean_up_client(client_to_kick, "kicked")
+    return True
+    
 def handle_messages(client, client_ip=None):
     """Handle received messages from users"""
     buffer = ""
@@ -145,26 +81,17 @@ def handle_messages(client, client_ip=None):
             break
         
         if len(line) > 2000:
-            client.send(b"ERR MESSAGE_TOO_LONG\n")
+            client.send(error(ErrorCode.MESSAGE_TOO_LONG).encode())
             continue
 
-        session = user_sessions.get(client)
+        session = registry.get_session(client)
         if not session:
-            client.send(b"ERR NOT_AUTHENTICATED\n")
+            client.send(error(ErrorCode.NOT_AUTHENTICATED).encode())
             clean_up_client(client, "disconnected", client_ip)
             break
 
-        user_role = session.get("role", "user")
-
-        with state_lock:
-            current_nick = (
-                nicknames[clients.index(client)] if client in clients
-                else None
-            )
-
-        if not current_nick:
-            clean_up_client(client, "disconnected", client_ip)
-            break
+        user_role = session.role
+        current_nick = session.username
 
         if line.startswith(("KICK ", "BAN ", "UNBAN ", "SET ")):
             cmd, args, err = parse_and_validate_command(line)
@@ -177,21 +104,21 @@ def handle_messages(client, client_ip=None):
             # Check if the user is admin and remove the target user
             if line.startswith('KICK '):
                 if not has_permission(user_role, Permission.KICK):
-                    client.send(b"MSG PERMISSION_DENIED: You do not have KICK permission.\n")
+                    client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have KICK permission.").encode())
                     log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=KICK_PERMISSION_DENIED")
                     continue
 
                 name_to_kick = line[5:].strip()
                 if name_to_kick:
                     if kick_user(name_to_kick):
-                        broadcast(f"MSG {name_to_kick} was kicked by {current_nick}!\n".encode()) # Send the announcement to all users
+                        broadcast(chat_message(f"{name_to_kick} was kicked by {current_nick}!").encode()) # Send the announcement to all users
                         print(f'{name_to_kick} was kicked!')
                         log_event("KICK", username=name_to_kick, extra_info=f"by={current_nick}")
                 continue
             # Check if the user is admin and ban the target user
             elif line.startswith('BAN '):
                 if not has_permission(user_role, Permission.BAN):
-                    client.send(b"MSG PERMISSION_DENIED: You do not have BAN permission.\n")
+                    client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have BAN permission.").encode())
                     log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=BAN_PERMISSION_DENIED")
                     continue
 
@@ -199,14 +126,14 @@ def handle_messages(client, client_ip=None):
                 if name_to_ban:
                     add_ban(name_to_ban)
                     if kick_user(name_to_ban):
-                        broadcast(f"MSG {name_to_ban} was banned by {current_nick}!\n".encode()) # Send the announcement to all users
+                        broadcast(chat_message(f"{name_to_ban} was banned by {current_nick}!").encode()) # Send the announcement to all users
                         print(f'{name_to_ban} was banned!')
                         log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
 
                 continue
             elif line.startswith("UNBAN "):
                 if not has_permission(user_role, Permission.UNBAN):
-                    client.send(b"MSG PERMISSION DENIED: You do not have UNBAN permission.\n")
+                    client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have UNBAN permission.").encode())
                     log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=UNBAN_PERMISSION_DENIED")
                     continue
 
@@ -217,47 +144,41 @@ def handle_messages(client, client_ip=None):
                 continue
             elif line.startswith("SET "):
                 if not has_permission(user_role, Permission.SET):
-                    client.send(b"MSG PERMISSION DENIED: You do not have SET permission.\n")
+                    client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have SET permission.").encode())
                     log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=SET_PERMISSION_DENIED")
                     continue
 
                 parts = line[4:].strip().split(maxsplit=1)
                 if len(parts) != 2:
-                    client.send(b"ERR INVALID_FORMAT: Usage: SET <username> <role>\n")
+                    client.send(error(ErrorCode.INVALID_FORMAT, "Usage: SET <username> <role>").encode())
                     continue
                 target_user = parts[0].strip().lower()
                 new_role = parts[1].strip().lower()
 
                 if set_user_role(target_user, new_role):
                     print(f"{target_user} role has been changed to {new_role} by {current_nick}")
-                    broadcast(f"MSG {target_user} role has been changed to {new_role} by {current_nick}\n".encode())
-                    target_client = None
-                    with state_lock:
-                        if target_user in nicknames:
-                            index = nicknames.index(target_user)
-                            target_client = clients[index]
-                            if target_client in user_sessions:
-                                user_sessions[target_client]["role"] = new_role
+                    broadcast(chat_message(f"{target_user} role has been changed to {new_role} by {current_nick}").encode())
+                    target_client = registry.set_role(target_user, new_role)
                     if target_client:
                         if new_role in ["moderator", "admin"]:
-                            target_client.send(f"MSG {'-' * 50}\n".encode())
-                            target_client.send(b"MSG [SYSTEM] New commands unlocked:\n")
-                            target_client.send(b"MSG - Type '/kick' <user_name> to kick a user out of the chat room\n")
-                            target_client.send(b"MSG - Type '/ban' <user_name> to ban a user from the chat room\n")
-                            target_client.send(b"MSG - Type '/unban' <user_name> to unban a user\n")
+                            target_client.send(chat_message('-' * 50).encode())
+                            target_client.send(chat_message("[SYSTEM] New commands unlocked:").encode())
+                            target_client.send(chat_message("- Type '/kick' <user_name> to kick a user out of the chat room").encode())
+                            target_client.send(chat_message("- Type '/ban' <user_name> to ban a user from the chat room").encode())
+                            target_client.send(chat_message("- Type '/unban' <user_name> to unban a user").encode())
                             if new_role == "admin":
-                                target_client.send(b"MSG - Type '/set' <username> <role> to set a new role for a user\n")
-                            target_client.send(f"MSG {'-' * 50}\n".encode())
+                                target_client.send(chat_message("- Type '/set' <username> <role> to set a new role for a user").encode())
+                            target_client.send(chat_message('-' * 50).encode())
                     log_event("SET_ROLE", username=target_user, extra_info=f"by={current_nick} new_role={new_role}")
 
                 else:
-                    client.send(f"ERR INVALID_ROLE: Role '{new_role}' is invalid.\n".encode())
+                    client.send(error(ErrorCode.INVALID_ROLE, f"Role '{new_role}' is invalid.").encode())
                     log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=SET_INVALID_ROLE new_role={new_role}")
 
         """Broadcast the normal message"""
         if line.startswith("MSG "):
             if not message_limiter.allow(client):
-                client.send(b"ERR RATE_LIMIT_EXCEEDED Typing too fast. Try again later!\n")
+                client.send(error(ErrorCode.RATE_LIMIT_EXCEEDED, "Typing too fast. Try again later!").encode())
                 log_event("RATE_LIMIT_EXCEEDED", username=current_nick, extra_info="reason=MESSAGE_FLOOD")
                 continue
 
@@ -269,4 +190,4 @@ def handle_messages(client, client_ip=None):
                 log_event("INVALID_MESSAGE", username=current_nick, extra_info=f"msg={content} {err_msg}")
                 continue
 
-            broadcast(f"MSG {current_nick}: {content}\n".encode(), sender=client)
+            broadcast(chat_message(f"{current_nick}: {content}").encode(), sender=client)

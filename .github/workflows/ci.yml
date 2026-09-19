@@ -30,7 +30,7 @@ jobs:
         run: ruff check .
 
       - name: Mypy
-        run: mypy src/tlsocket/auth src/tlsocket/security src/tlsocket/log_parser
+        run: mypy src/tlsocket/auth src/tlsocket/security src/tlsocket/log_parser src/tlsocket/protocol.py src/tlsocket/client_side
       
       - name: Bandit (static security scan)
         run: bandit -r src/
