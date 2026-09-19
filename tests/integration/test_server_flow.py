@@ -1,5 +1,7 @@
 import time
 
+import pytest
+
 from tlsocket.server_side.handlers import client_handler as ch
 
 
@@ -115,3 +117,16 @@ def test_message_flood_is_rate_limited(make_client):
 
     client.send("MSG one_too_many")
     assert client.recv_line().startswith("ERR RATE_LIMIT_EXCEEDED")
+
+def test_connect_with_backoff_raises_after_exhausting_retries(running_server, make_client):
+    from tlsocket.client_side.client_management.connection import (
+        ServerRejectedError,
+        connect_with_backoff,
+    )
+    from tlsocket.config import CERT_FILE, MAX_CONNECTIONS_PER_IP
+
+    port = running_server
+    _blockers = [make_client() for _ in range(MAX_CONNECTIONS_PER_IP)]
+
+    with pytest.raises(ServerRejectedError):
+        connect_with_backoff("localhost", port, CERT_FILE, max_retries=2, base_delay=0.05)
