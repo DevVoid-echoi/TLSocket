@@ -73,8 +73,8 @@ certs/                            # server.crt / server.key (gitignored)
 logs/                             # *.log (gitignored)
 ```
 
-Runtime files are resolved relative to the current working directory. Override
-with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
+Runtime files (`data/`, `logs/`, `certs/`) live under the project root by
+default, regardless of the directory you launch from. Override with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
 `TLSOCKET_CERT_FILE` / `TLSOCKET_KEY_FILE`), plus `TLSOCKET_HOST` /
 `TLSOCKET_PORT`. See `.env.example`.
 
