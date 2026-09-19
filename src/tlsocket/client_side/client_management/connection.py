@@ -2,6 +2,7 @@ import socket
 import ssl
 import sys
 import time
+from pathlib import Path
 
 from tlsocket.config import MAX_LINE_LENGTH
 from tlsocket.protocol import Command, chat_message, format_command
@@ -12,7 +13,7 @@ class ServerRejectedError(Exception):
         super().__init__(detail)
         self.detail = detail
 
-def connect(host: str, port: int, cert_file) -> ssl.SSLSocket:
+def connect(host: str, port: int, cert_file: str | Path) -> ssl.SSLSocket:
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     context.load_verify_locations(str(cert_file))
     context.verify_mode = ssl.CERT_REQUIRED
@@ -33,7 +34,7 @@ def connect(host: str, port: int, cert_file) -> ssl.SSLSocket:
     return client
 
 def connect_with_backoff(
-        host: str, port: int, cert_file, max_retries: int = 5, base_delay: float = 1.0
+        host: str, port: int, cert_file: str | Path, max_retries: int = 5, base_delay: float = 1.0
 ) -> ssl.SSLSocket:
     delay = base_delay
     for attempt in range(1, max_retries + 1):
@@ -49,7 +50,7 @@ def connect_with_backoff(
 
 stop_threads = False
 
-def read_line(sock, buffer):
+def read_line(sock: ssl.SSLSocket, buffer: str) -> tuple[str | None, str]:
     """Read full-line messages"""
     while "\n" not in buffer:
         if len(buffer) > MAX_LINE_LENGTH:
@@ -65,7 +66,7 @@ def read_line(sock, buffer):
     line, buffer = buffer.split("\n", 1)
     return line.strip(), buffer
 
-def receive(client, nickname):
+def receive(client: ssl.SSLSocket, nickname: str) -> None:
     """Handle different types of received messages"""
     global stop_threads
     buffer = ""
@@ -96,7 +97,7 @@ def receive(client, nickname):
             break
             
 
-def write(client, nickname):
+def write(client: ssl.SSLSocket, nickname: str) -> None:
     """Handle different types of user input"""
     global stop_threads
     while not stop_threads:

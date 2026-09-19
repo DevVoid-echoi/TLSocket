@@ -14,7 +14,7 @@ from tlsocket.config import CERT_FILE, CLIENT_HOST, PORT
 from tlsocket.protocol import Command, format_command
 
 
-def main():
+def main() -> None:
     """Connect using IPv4 and TCP then wrap the socket with SSL context"""
     try:
         client = connect_with_backoff(CLIENT_HOST, PORT, CERT_FILE)
@@ -64,7 +64,7 @@ def main():
         else:
             print(f">> Register announcement: {line}")# Print the register announcement
 
-    print_instructions(nickname, user_role) # Print instructions based on the role of user
+    print_instructions(user_role) # Print instructions based on the role of user
 
     """Create receive thread and start thread"""
     receive_thread = threading.Thread(
