@@ -12,7 +12,6 @@ from tlsocket.client_side.client_management.instructions import print_instructio
 from tlsocket.config import CERT_FILE, CLIENT_HOST, PORT
 from tlsocket.protocol import Command, format_command
 
-# TODO: Allow reconnect after connection limit reached
 
 def main():
     """Connect using IPv4 and TCP then wrap the socket with SSL context"""

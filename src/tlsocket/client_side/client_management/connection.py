@@ -1,7 +1,51 @@
+import socket
+import ssl
 import sys
+import time
 
 from tlsocket.config import MAX_LINE_LENGTH
 from tlsocket.protocol import Command, chat_message, format_command
+
+
+class ServerRejectedError(Exception):
+    def __init__(self, detail: str):
+        super().__intit__(detail)
+        self.detail = detail
+
+def connect(host: str, port: int, cert_file) -> ssl.SSLSocket:
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    context.load_verify_locations(str(cert_file))
+    context.verify_mode = ssl.CERT_REQUIRED
+    context.check_hostname = True
+
+    raw = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    client = context.wrap_socket(raw,server_hostname=host)
+    client.connect((host,port))
+
+    client.settimeout(0.2)
+    line, _ = read_line(client, "")
+    client.settimeout(None)
+    if line is not None:
+        client.close()
+        detail = line[4:] if line.startswith("ERR ") else line
+        raise ServerRejectedError(detail)
+
+    return client
+
+def connect_with_backoff(
+        host: str, port: int, cert_file, max_retries: int = 5, base_delay: float = 1.0
+) -> ssl.SSLSocket:
+    delay = base_delay
+    for attempt in range(1, max_retries + 1):
+        try:
+            return connect(host, port, cert_file)
+        except ServerRejectedError as e:
+            if attempt == max_retries:
+                raise
+            print(f">> {e.detail} - thử lại sau {delay: .0f}s ({attempt}/{max_retries})")
+            time.sleep(delay)
+            delay = min(delay * 2, 30)
+    raise AssertionError("unreachable")
 
 stop_threads = False
 
