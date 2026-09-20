@@ -43,7 +43,7 @@ def analyze(records: Iterable[LogRecord]) -> dict[str, Any]:
             kicked_users_count += 1
         if event == "BAN":
             banned_users_count += 1
-        if event in["RATE_LIMIT_EXCEEDED", "[ALERT] BRUTE_FORCE_ATTEMPT"]:
+        if event in["RATE_LIMIT_EXCEEDED", "BRUTE_FORCE_ATTEMPT"]:
             brute_force_detector = True
             if r.ip and r.ip != "N/A":
                 suspicious_ips[r.ip] += 1

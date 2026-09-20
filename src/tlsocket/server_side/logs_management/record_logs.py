@@ -41,10 +41,8 @@ def _emit(logger: logging.Logger, event: str, username: str, ip: str, extra_info
     logger.log(level, event, extra=fields)
 
 def _feed_detector(event: str, username: str, ip: str, extra_info: str) -> None:
-    now = datetime.now(timezone.utc)
     brute_force_detector.process_record(LogRecord(
-        date=now.strftime("%Y-%m-%d"),
-        time=now.strftime("%H:%M:%S"),
+        timestamp=datetime.now(timezone.utc),
         event_type=event,
         level="WARNING" if event in WARNING_EVENTS else "INFO",
         username=username,

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Iterable
+from datetime import datetime, timezone
 from pathlib import Path
 
 from tlsocket.log_parser.models import LogRecord
@@ -17,40 +19,20 @@ def iter_record(log_file: str | Path) -> Iterable[LogRecord]:
 def parse_line(line: str) -> LogRecord | None:
     "Phân tích một dòng log và trả về bản ghi log nếu hợp lệ"
     line = line.strip()
-    if not line or line.startswith("#"):
+    if not line:
         return None
-
-    parts = line.split(maxsplit=3)
-    if len(parts) < 4:
+    try:
+        data = json.loads(line)
+        timestamp = datetime.fromisoformat(data["ts"])
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        return LogRecord(
+            timestamp=timestamp,
+            level=data["level"],
+            event_type=data["event"],
+            username=data.get("username", "N/A"),
+            ip=data.get("ip", "N/A"),
+            extra_info=data.get("extra_info", ""),
+        )
+    except (ValueError, KeyError, TypeError):
         return None
-    date, time, level, rest = parts
-
-    remaining_start_index=1
-
-    rest_parts = rest.split()
-    event_type = rest_parts[0]
-    if event_type == "[ALERT]" and len(rest_parts) > 1:
-        event_type = "[ALERT] " + rest_parts[1]
-        remaining_start_index=2
-
-
-    username = "N/A"
-    ip = "N/A"
-    extra_info_list = []
-
-    for kv in rest_parts[remaining_start_index:]:
-        if "=" in kv:
-            key, value = kv.split("=", 1)
-            if key == "username":
-                username = value
-            elif key == "ip":
-                ip = value
-            else:
-                extra_info_list.append(f"{key}={value}")
-        else:
-            extra_info_list.append(kv)
-
-    extra_info = " ".join(extra_info_list) if extra_info_list else "N/A"
-
-
-    return LogRecord(date=date, time=time, level=level, event_type=event_type, username=username, ip=ip, extra_info=extra_info)

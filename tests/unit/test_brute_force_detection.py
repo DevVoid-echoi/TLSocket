@@ -14,13 +14,13 @@ def detector(tmp_path, monkeypatch):
 
 def _failed(ip, ts):
     return LogRecord(
-        date=ts.strftime("%Y-%m-%d"), time=ts.strftime("%H:%M:%S"),
+        timestamp=ts,
         level="WARNING", event_type="LOGIN_FAILED",
         username="victim", ip=ip, extra_info="",
         )
 
 def test_blocks_after_max_attempts_within_window(detector):
-    now = datetime.now(timezone.utc).replace(microsecond=0)  # log chỉ lưu tới độ chính xác giây
+    now = datetime.now(timezone.utc)
     for i in range(3):
         detector.process_record(_failed("1.2.3.4", now + timedelta(seconds=i)))
 
@@ -30,15 +30,16 @@ def test_blocks_after_max_attempts_within_window(detector):
     assert detector.blocked_ips["1.2.3.4"] == last_ts + timedelta(seconds=10)
 
 def test_ignores_non_login_failed_events(detector):
-    rec = LogRecord(date="2026-01-01", time="12:00:00", level="INFO",
-                    event_type="LOGIN_SUCCESS", username="a", ip="1.2.3.4",
+    rec = LogRecord(timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+                    level="INFO", event_type="LOGIN_SUCCESS", username="a", ip="1.2.3.4",
                     extra_info="")
     detector.process_record(rec)
     assert detector.failed_attempts_history=={}
 
 def test_ignores_missing_ip(detector):
-    rec = LogRecord(date="2026-01-01", time="12:00:00", level="WARNING",
-                    event_type="LOGIN_FAILED", username="a", ip="", extra_info="")
+    rec = LogRecord(timestamp=datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc),
+                    level="WARNING", event_type="LOGIN_FAILED", username="a", ip="",
+                    extra_info="")
     detector.process_record(rec)
     assert detector.blocked_ips=={}
 
@@ -61,7 +62,7 @@ def test_old_attempts_outside_window_are_pruned(detector):
 def test_escalating_ban_duration(detector, prior_violations, multiplier):
     ip = "1.2.3.4"
     detector.violation_count[ip] = prior_violations
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(timezone.utc)
     for i in range (3):
         detector.process_record(_failed(ip, now + timedelta(seconds=i)))
 
@@ -101,7 +102,7 @@ def test_save_and_load_state_roundtrip(detector):
 
 def test_detect_brute_force_stream_blocks_ip_from_records(tmp_path, monkeypatch):
     monkeypatch.setattr(bfd, "BRUTE_FORCE_STATE_FILE", tmp_path / "state.json")
-    now = datetime.now(timezone.utc).replace(microsecond=0)
+    now = datetime.now(timezone.utc)
     records = [_failed("1.2.3.4", now + timedelta(seconds=i)) for i in range(3)]
 
     bfd.detect_brute_force_stream(records, max_attempts=3, window_seconds=60)
