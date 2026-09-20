@@ -1,122 +1,67 @@
 import logging
-import threading
 from datetime import datetime, timezone
 
 from tlsocket.config import (
     BLOCK_DURATION,
-    LOG_DIR,
     LOGIN_WINDOW,
     MAX_LOGIN_ATTEMPTS,
-    SECURITY_LOG,
-    SERVER_LOG,
-    TEST_LOG,
 )
 from tlsocket.log_parser.models import LogRecord
+from tlsocket.logging_config import configure_logging
 from tlsocket.security.brute_force_detection import BruteForceDetector
 
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+configure_logging()
 
-SERVER_LOGS_PATH = SERVER_LOG
-SECURITY_LOGS_PATH = SECURITY_LOG
-TEST_LOGS_PATH = TEST_LOG
-
-LOG_FORMAT = "%(asctime)s %(levelname)s %(message)s"
-DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
-
-formatter = logging.Formatter(LOG_FORMAT, datefmt = DATE_FORMAT)
-
-log_lock = threading.Lock()
-
-# --- Server Logger ---
-server_logger =logging.getLogger("ServerLogger")
-server_logger.setLevel(logging.INFO)
-
-server_file_handler = logging.FileHandler(SERVER_LOGS_PATH, encoding='utf-8')
-server_file_handler.setFormatter(formatter)
-server_logger.addHandler(server_file_handler)
-
-# --- Security Logger ---
-security_logger = logging.getLogger("SecurityLogger")
-security_logger.setLevel(logging.INFO)
-
-security_file_handler = logging.FileHandler(SECURITY_LOGS_PATH, encoding='utf-8')
-security_file_handler.setFormatter(formatter)
-security_logger.addHandler(security_file_handler)
-
-# --- Test Logger ---
-test_logger = logging.getLogger("TestLogger")
-test_logger.setLevel(logging.INFO)
-
-test_file_handler = logging.FileHandler(TEST_LOGS_PATH, encoding="utf-8")
-test_file_handler.setFormatter(formatter)
-test_logger.addHandler(test_file_handler)
+server_logger = logging.getLogger("tlsocket.server")
+security_logger = logging.getLogger("tlsocket.security")
+test_logger = logging.getLogger("tlsocket.test")
 
 brute_force_detector = BruteForceDetector(
     max_attempts=MAX_LOGIN_ATTEMPTS,
     window_seconds=LOGIN_WINDOW,
-    block_duration=BLOCK_DURATION)
+    block_duration=BLOCK_DURATION
+)
 
 # --- Log events ---
-def log_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra_info: str = ""):
-    msg = f"{event_type} username={username} "
-    if ip!= "N/A":
-        msg += f"ip={ip} "
-    if extra_info:
-        msg += f"{extra_info}"
-    
-    with log_lock:
-        if event_type in ["USER_CONNECTED", "USER_DISCONNECTED", "CONNECTION_ERROR"]:
-            server_logger.info(msg)
-            server_file_handler.flush()
-        elif event_type in ["LOGIN_SUCCESS", "REGISTER_SUCCESS"]:
-            server_logger.info(msg)
-            server_file_handler.flush()
-            security_logger.info(msg)
-            security_file_handler.flush()
-        elif event_type in ["SET", "KICK", "BAN", "UNBAN"]:
-            security_logger.info(msg)
-            security_file_handler.flush()
-        elif event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED"]:
-            security_logger.warning(msg)
-            security_file_handler.flush()
+SERVER_ONLY = frozenset({"USER_CONNECTED", "USER_DISCONNECTED", "CONNECTION_ERROR"})
+SERVER_AND_SECURITY = frozenset({"LOGIN_SUCCESS", "REGISTER_SUCCESS"})
+SECURITY_ONLY = frozenset({"SET", "KICK", "BAN", "UNBAN"})
+WARNING_EVENTS = frozenset({
+    "LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT",
+    "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED"
+})
 
+def _emit(logger: logging.Logger, event: str, username: str, ip: str, extra_info: str):
+    level = logging.WARNING if event in WARNING_EVENTS else logging.INFO
+    fields = {"username": username}
+    if ip != "N/A":
+        fields["ip"] = ip
+    if extra_info:
+        fields["extra_info"] = extra_info
+    logger.log(level, event, extra=fields)
+
+def _feed_detector(event: str, username: str, ip: str, extra_info: str) -> None:
     now = datetime.now(timezone.utc)
-    record=LogRecord(
+    brute_force_detector.process_record(LogRecord(
         date=now.strftime("%Y-%m-%d"),
         time=now.strftime("%H:%M:%S"),
-        event_type=event_type,
-        level="WARNING" if event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED"] else "INFO",
+        event_type=event,
+        level="WARNING" if event in WARNING_EVENTS else "INFO",
         username=username,
         ip=ip,
         extra_info=extra_info
-    )
+    ))
 
-    brute_force_detector.process_record(record)
+def log_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = ""):
+    if event_type in SERVER_ONLY:
+        _emit(server_logger, event_type, username, ip, extra_info)
+    elif event_type in SERVER_AND_SECURITY:
+        _emit(server_logger, event_type, username, ip, extra_info)
+        _emit(security_logger, event_type, username, ip, extra_info)
+    elif event_type in SECURITY_ONLY or event_type in WARNING_EVENTS:
+        _emit(security_logger, event_type, username, ip, extra_info)
+    _feed_detector(event_type, username, ip, extra_info)
 
-def log_test_event(event_type: str, username: str = "Unknown", ip: str = "N/A", extra_info: str = ""):
-    msg = f"{event_type} username={username} "
-    if ip!= "N/A":
-        msg += f"ip={ip} "
-    if extra_info:
-        msg += f"{extra_info}"
-    
-    with log_lock:
-        if event_type in ["USER_CONNECTED", "USER_DISCONNECTED", "CONNECTION_ERROR", "LOGIN_SUCCESS", "REGISTER_SUCCESS", "SET", "KICK", "BAN", "UNBAN"]:
-            test_logger.info(msg)
-            test_file_handler.flush()
-        elif event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED"]:
-            test_logger.warning(msg)
-            test_file_handler.flush()
-
-    now = datetime.now(timezone.utc)
-    record=LogRecord(
-        date=now.strftime("%Y-%m-%d"),
-        time=now.strftime("%H:%M:%S"),
-        event_type=event_type,
-        level="WARNING" if event_type in ["LOGIN_FAILED", "REGISTER_FAILED", "INVALID_COMMAND", "INVALID_FORMAT", "RATE_LIMIT_EXCEEDED"] else "INFO",
-        username=username,
-        ip=ip,
-        extra_info=extra_info
-    )
-
-    brute_force_detector.process_record(record)
+def log_test_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = ""):
+    _emit(test_logger, event_type, username, ip, extra_info)
+    _feed_detector(event_type, username, ip, extra_info)
