@@ -11,10 +11,10 @@ alert_logger = logging.getLogger("tlsocket.alert")
 def log_alert(ip: str, failed_attempts: int, window_seconds: int) -> None:
     fields = {"ip": ip, "failed_attempts": failed_attempts, "window_seconds": window_seconds}
 
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M%S")
+    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     print(
         f"\033[91m{now_str} [ALERT] POSSIBLE BRUTE-FORCE ATTACK | "
-        f"IP={ip} | FailedAttempts={failed_attempts} | Window={window_seconds}"
+        f"IP={ip} | FailedAttempts={failed_attempts} | Window={window_seconds}\033[0m"
     )
 
     security_logger.warning("BRUTE_FORCE_ATTEMPT", extra=fields)

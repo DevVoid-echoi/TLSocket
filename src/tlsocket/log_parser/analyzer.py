@@ -2,10 +2,57 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict
 from collections.abc import Iterable
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from tlsocket.log_parser.models import LogRecord
 
+ATTACK_EVENTS = frozenset({
+    "LOGIN_FAILED", "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED", "BRUTE_FORCE_ATTEMPT"
+})
+
+
+@dataclass(frozen=True)
+class FailureBucket:
+    start: datetime
+    total: int
+    failures: int
+
+    @property
+    def rate(self) -> float:
+        return self.failures/self.total
+
+def peak_attack_hours(records: Iterable[LogRecord], top_n: int = 3) -> list[tuple[str, int]]:
+    counts: Counter[str] = Counter()
+    for r in records:
+        if r.event_type in ATTACK_EVENTS:
+            hour = r.timestamp.astimezone(timezone.utc).strftime("%Y-%m-%d %H:00")
+            counts[hour] += 1
+    return counts.most_common(top_n)
+
+def top_targeted_users(records: Iterable[LogRecord], top_n: int = 5) -> list[tuple[str, int]]:
+    counts: Counter[str] = Counter(
+        r.username for r in records
+        if r.event_type == "LOGIN_FAILED"
+        and r.username not in ("N/A", "Unknown")
+        and "ALREADY_LOGGED_IN" not in r.extra_info
+    )
+    return counts.most_common(top_n)
+
+def failure_rate_over_time(records: Iterable[LogRecord], bucket_minutes: int = 60) -> list[FailureBucket]:
+    size = bucket_minutes * 60
+    totals: Counter[int] = Counter()
+    failures: Counter[int] = Counter()
+    for r in records:
+        epoch = int(r.timestamp.timestamp())
+        bucket = epoch - epoch%size
+        totals[bucket] += 1
+        if r.level == "WARNING":
+            failures[bucket] += 1
+    return [
+        FailureBucket(datetime.fromtimestamp(b, tz=timezone.utc), totals[b], failures[b]) for b in sorted(totals)
+    ]
 
 def analyze(records: Iterable[LogRecord]) -> dict[str, Any]:
     """Analyze log files and return statistics."""
