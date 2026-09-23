@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 import pytest
 
 from tlsocket.log_parser.analyzer import analyze
@@ -5,7 +7,7 @@ from tlsocket.log_parser.models import LogRecord
 
 
 def _rec(event_type, ip="N/A", level="INFO"):
-    return LogRecord(date="2026-01-01", time="00:00:00", level=level,
+    return LogRecord(timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc), level=level,
                     event_type=event_type, username="N/A", ip=ip, extra_info="")
 
 def test_analyze_empty_records():
@@ -50,7 +52,7 @@ def test_analyze_error_rate_is_fraction_of_total():
     result = analyze(records)
     assert result["error_rate"] == 0.25
 
-@pytest.mark.parametrize("event_type", ["RATE_LIMIT_EXCEEDED", "[ALERT] BRUTE_FORCE_ATTEMPT"])
+@pytest.mark.parametrize("event_type", ["RATE_LIMIT_EXCEEDED", "BRUTE_FORCE_ATTEMPT"])
 def test_analyze_flags_brute_force(event_type):
     result = analyze([_rec(event_type, ip="9.9.9.9")])
     assert result["brute_force_alert"] is True

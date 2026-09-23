@@ -1,16 +1,31 @@
 """Central configuration and runtime file locations.
 
-Runtime files (user database, ban list, logs, TLS material) are resolved
-relative to the current working directory by default, and can be redirected
-with ``TLSOCKET_*`` environment variables.
+Runtime files (user database, ban list, logs, TLS material) live under the
+project root by default - NOT the current working directory, so running the
+server from any folder (e.g. an IDE "Run" button whose cwd is the file's own
+directory) can't scatter stray logs/, data/, certs/ directories around.
+They can be redirected with ``TLSOCKET_*`` environment variables.
 """
 
 import os
 from pathlib import Path
 
 
+def _project_root() -> Path:
+    """Project root of a source checkout (src/ layout: this file is
+    <root>/src/tlsocket/config.py, identified by the pyproject.toml two
+    levels up). For a regular installed package there is no such file next to
+    site-packages, so fall back to the current working directory."""
+    root = Path(__file__).resolve().parents[2]
+    return root if (root / "pyproject.toml").exists() else Path.cwd()
+
+
+_ROOT = _project_root()
+
+
 def _dir(env: str, default: str) -> Path:
-    return Path(os.environ.get(env, default)).expanduser()
+    override = os.environ.get(env)
+    return Path(override).expanduser() if override else _ROOT / default
 
 
 HOST = os.environ.get("TLSOCKET_HOST", "0.0.0.0")  # nosec B104 - server cố ý bind mọi interface theo mặc định; production nên giới hạn qua TLSOCKET_HOST/firewall
@@ -51,3 +66,5 @@ ALERT_LOG = LOG_DIR / "alerts.log"
 
 CERT_FILE = Path(os.environ.get("TLSOCKET_CERT_FILE") or CERT_DIR / "server.crt")
 KEY_FILE = Path(os.environ.get("TLSOCKET_KEY_FILE") or CERT_DIR / "server.key")
+
+METRICS_PORT = int(os.environ.get("TLSOCKET_METRICS_PORT", "9100"))

@@ -5,6 +5,11 @@ import pytest
 from tlsocket.server_side.handlers import client_handler as ch
 
 
+def test_ping_returns_pong(make_client):
+    client = make_client()
+    client.send("PING")
+    assert client.recv_line() == "PONG"
+
 def test_register_then_login_succeeds(make_client):
     alice = make_client()
     alice.send("REGISTER alice pw123")
@@ -130,3 +135,23 @@ def test_connect_with_backoff_raises_after_exhausting_retries(running_server, ma
 
     with pytest.raises(ServerRejectedError):
         connect_with_backoff("localhost", port, CERT_FILE, max_retries=2, base_delay=0.05)
+
+def test_chat_message_increments_message_total(make_client):
+    import time
+
+    from tlsocket import metrics
+
+    before = metrics.messages_total._value.get()
+
+    alice = make_client()
+    alice.send("REGISTER alice pw123")
+    alice.recv_line()
+    alice.send("LOGIN alice pw123")
+    alice.recv_line()
+    alice.send("MSG hello")
+
+    deadline = time.time() + 2
+    while metrics.messages_total._value.get() == before and time.time() < deadline:
+        time.sleep(0.05)
+
+    assert metrics.messages_total._value.get() == before + 1

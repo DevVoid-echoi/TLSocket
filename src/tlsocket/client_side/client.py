@@ -35,7 +35,12 @@ def main() -> None:
         choice = input("Choose (1: Login, 2: Register): ").strip()
         username = input("Username: ").strip()
         password = input("Password: ").strip()
-        command = Command.LOGIN if choice == "1" else Command.REGISTER
+        if choice == "1":
+            command = Command.LOGIN 
+        elif choice == "2":
+            command = Command.REGISTER
+        else:
+            continue
 
         try:
             client.send(format_command(command, username, password).encode())

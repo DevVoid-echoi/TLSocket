@@ -58,10 +58,6 @@ class BruteForceDetector:
             except Exception as e:
                 print(f"[ERROR] Failed to load state from {self.db_file}: {e}")
 
-    def _parse_timestamp(self, date_str: str, time_str: str) -> datetime:
-        # Convert date and time strings into a datetime object
-        return datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-
     def _get_ban_duration(self, ip:str) -> int:
         count = self.violation_count[ip]
         if count <= 1:
@@ -97,7 +93,7 @@ class BruteForceDetector:
         if record.event_type != "LOGIN_FAILED" or not record.ip or record.ip == "N/A":
             return  # Ignore non-login failed events or invalid IPs
 
-        current_time = self._parse_timestamp(record.date, record.time)  # Get the current timestamp
+        current_time = record.timestamp  # Get the current timestamp
         ip = record.ip  # Extract the IP address from the record
         timestamps = self.failed_attempts_history[ip]  # Get the list of timestamps for this IP
 

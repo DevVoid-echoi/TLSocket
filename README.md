@@ -73,8 +73,8 @@ certs/                            # server.crt / server.key (gitignored)
 logs/                             # *.log (gitignored)
 ```
 
-Runtime files are resolved relative to the current working directory. Override
-with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
+Runtime files (`data/`, `logs/`, `certs/`) live under the project root by
+default, regardless of the directory you launch from. Override with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
 `TLSOCKET_CERT_FILE` / `TLSOCKET_KEY_FILE`), plus `TLSOCKET_HOST` /
 `TLSOCKET_PORT`. See `.env.example`.
 
@@ -153,13 +153,49 @@ Anything else typed is sent as a chat message.
 
 ## Log Format
 
-Timestamps are UTC (not the server's local time).
+Logs are JSON Lines: one JSON object per line, `ts` in UTC (ISO 8601, not the
+server's local time). `ip`/`extra_info` are omitted when not applicable.
 
-```text
-2026-08-27 15:00:15 INFO LOGIN_SUCCESS username=alice ip=127.0.0.1
-2026-08-27 15:00:22 WARNING LOGIN_FAILED username=bob ip=127.0.0.1
-2026-08-27 15:01:05 WARNING KICK username=spammer by=admin
+```json
+{"level": "INFO", "event": "LOGIN_SUCCESS", "username": "alice", "ip": "127.0.0.1", "ts": "2026-08-27T15:00:15.120345+00:00"}
+{"level": "WARNING", "event": "LOGIN_FAILED", "username": "bob", "ip": "127.0.0.1", "extra_info": "reason=BANNED", "ts": "2026-08-27T15:00:22.480112+00:00"}
+{"level": "WARNING", "event": "BRUTE_FORCE_ATTEMPT", "ip": "10.0.0.7", "failed_attempts": 5, "window_seconds": 60, "ts": "2026-08-27T15:01:05.007731+00:00"}
 ```
+
+Files: `logs/server.log` (connections, logins), `logs/security.log` (auth,
+admin actions, failures), `logs/alerts.log` (brute-force alerts only).
+
+### Log analyzer CLI
+
+```bash
+tlsocket-analyze security                    # or: server, alerts, or a path
+tlsocket-analyze security --format json -o report.json
+tlsocket-analyze security --since 1h
+tlsocket-analyze security --follow           # tail -f style, live
+python -m tlsocket.log_parser security       # equivalent to tlsocket-analyze
+```
+
+Reports include request/login/ban counts, top 5 IPs, peak attack hours,
+top targeted usernames, and a brute-force/DDoS alert flag.
+
+---
+
+## Observability
+
+The server exposes Prometheus metrics on `/metrics` (`TLSOCKET_METRICS_PORT`,
+default `9100`): connection counts, login/registration attempts by result,
+messages relayed, and currently-blocked IPs.
+
+```bash
+docker compose up --build
+```
+
+This starts the server (ports `9999` chat, `9100` metrics), Prometheus
+(`:9090`, scraping tlsocket every 5s), and Grafana (`:3000`, admin/admin,
+anonymous viewer access enabled) with a pre-provisioned "TLSocket" dashboard.
+
+<!-- TODO: screenshot of the Grafana dashboard after generating some traffic -->
+<!-- ![TLSocket Grafana dashboard](docs/grafana-dashboard.png) -->
 
 ---
 
