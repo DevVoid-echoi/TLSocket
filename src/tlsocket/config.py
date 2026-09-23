@@ -66,3 +66,5 @@ ALERT_LOG = LOG_DIR / "alerts.log"
 
 CERT_FILE = Path(os.environ.get("TLSOCKET_CERT_FILE") or CERT_DIR / "server.crt")
 KEY_FILE = Path(os.environ.get("TLSOCKET_KEY_FILE") or CERT_DIR / "server.key")
+
+METRICS_PORT = int(os.environ.get("TLSOCKET_METRICS_PORT", "9100"))

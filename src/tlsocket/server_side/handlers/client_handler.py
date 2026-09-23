@@ -1,3 +1,4 @@
+from tlsocket import metrics
 from tlsocket.auth.authentication import set_user_role
 from tlsocket.auth.rbac import Permission, has_permission
 from tlsocket.config import (
@@ -14,6 +15,7 @@ from tlsocket.server_side.handlers.ban_handler import add_ban, remove_ban
 from tlsocket.server_side.logs_management.record_logs import log_event
 
 registry = ClientRegistry(max_connections_per_ip=MAX_CONNECTIONS_PER_IP)
+metrics.connection_active.set_function(lambda: len(registry))
 message_limiter = SlidingWindowLimiter(max_events=MAX_MESSAGES_PER_WINDOW, window_seconds=MESSAGE_RATE_WINDOW)
 
 def read_line(sock, buffer):
@@ -190,4 +192,5 @@ def handle_messages(client, client_ip=None):
                 log_event("INVALID_MESSAGE", username=current_nick, extra_info=f"msg={content} {err_msg}")
                 continue
 
+            metrics.messages_total.inc()
             broadcast(chat_message(f"{current_nick}: {content}").encode(), sender=client)

@@ -4,7 +4,16 @@ import sys
 import threading
 
 from tlsocket.auth.authentication import login, register, set_user_role
-from tlsocket.config import CERT_FILE, HOST, KEY_FILE, MAX_REGISTER_ATTEMPTS, PORT, REGISTER_WINDOW
+from tlsocket.config import (
+    CERT_FILE,
+    HOST,
+    KEY_FILE,
+    MAX_REGISTER_ATTEMPTS,
+    METRICS_PORT,
+    PORT,
+    REGISTER_WINDOW,
+)
+from tlsocket.metrics import start_metrics_server
 from tlsocket.protocol import ErrorCode, chat_message, error, ok
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.server_side.client_registry import Session
@@ -119,6 +128,10 @@ def handle_new_connection(raw_client, address, context):
             line, buffer = read_line(client, buffer)
             if not line:
                 break
+
+            if line == "PING":
+                client.sendall(b"PONG\n")
+                continue
 
             if line.startswith("CLIENT_IP "):
                 if TEST_MODE:
@@ -302,6 +315,8 @@ def server_console_input():
             break
 
 def main():
+    start_metrics_server(METRICS_PORT)
+    print(f"[METRICS] /metrics available on: {METRICS_PORT}")
     server = ChatServer()
     port = server.start()
     print(f"[TLS SERVER] Listening on {HOST}:{port}...")

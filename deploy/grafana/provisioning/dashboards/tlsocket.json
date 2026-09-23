@@ -1,0 +1,120 @@
+{
+  "title": "TLSocket",
+  "uid": "tlsocket-overview",
+  "timezone": "utc",
+  "editable": true,
+  "refresh": "5s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Active connections",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "tlsocket_connections_active",
+        "legendFormat": "active",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Blocked IPs",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "fieldConfig": { "defaults": { "thresholds": {
+        "steps": [
+          { "color": "green", "value": null },
+          { "color": "red", "value": 1 }
+        ]
+      } } },
+      "targets": [
+        { "expr": "tlsocket_blocked_ips_active",
+        "legendFormat": "blocked",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Total connections accepted",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "tlsocket_connections_total",
+        "legendFormat": "total",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Chat messages/s",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "rate(tlsocket_messages_total[1m])",
+        "legendFormat": "msg/s",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Login attempts/s by result",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "rate(tlsocket_logins_total[1m])",
+        "legendFormat": "{{result}}",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Registration attempts/s by result",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "rate(tlsocket_registrations_total[1m])",
+        "legendFormat": "{{result}}",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Blocked IPs over time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "tlsocket_blocked_ips_active",
+        "legendFormat": "blocked IPs",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Active connections over time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "datasource": { "type": "prometheus", "uid": "prometheus"},
+      "targets": [
+        { "expr": "tlsocket_connections_active",
+        "legendFormat": "active",
+        "datasource": { "type": "prometheus", "uid": "prometheus"}
+      }
+      ]
+    }
+  ]
+}

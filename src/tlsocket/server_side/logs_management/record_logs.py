@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
+from tlsocket import metrics
 from tlsocket.config import (
     BLOCK_DURATION,
     LOGIN_WINDOW,
@@ -21,6 +22,8 @@ brute_force_detector = BruteForceDetector(
     window_seconds=LOGIN_WINDOW,
     block_duration=BLOCK_DURATION
 )
+
+metrics.blocked_ips_active.set_function(lambda: len(brute_force_detector.blocked_ips))
 
 # --- Log events ---
 SERVER_ONLY = frozenset({"USER_CONNECTED", "USER_DISCONNECTED", "CONNECTION_ERROR"})
@@ -59,6 +62,17 @@ def log_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra
     elif event_type in SECURITY_ONLY or event_type in WARNING_EVENTS:
         _emit(security_logger, event_type, username, ip, extra_info)
     _feed_detector(event_type, username, ip, extra_info)
+
+    if event_type == "LOGIN_SUCCESS":
+        metrics.logins_total.labels(result="success").inc()
+    elif event_type == "LOGIN_FAILED":
+        metrics.logins_total.labels(result="failed").inc()
+    elif event_type == "REGISTER_SUCCESS":
+        metrics.registration_total.labels(result="success").inc()
+    elif event_type == "REGISTER_FAILED":
+        metrics.registration_total.labels(result="failed").inc()
+    elif event_type == "USER_CONNECTED":
+        metrics.connection_total.inc()
 
 def log_test_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = ""):
     _emit(test_logger, event_type, username, ip, extra_info)
