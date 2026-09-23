@@ -1,12 +1,25 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+import time
+from collections.abc import Iterable, Iterator
 from datetime import datetime, timezone
 from pathlib import Path
 
 from tlsocket.log_parser.models import LogRecord
 
+
+def follow(log_file: str | Path, poll_interval: float = 0.5) -> Iterator[LogRecord]:
+    with open(log_file, encoding="utf-8") as f:
+        f.seek(0, 2)
+        while True:
+            line = f.readline()
+            if not line:
+                time.sleep(poll_interval)
+                continue
+            rec = parse_line(line)
+            if rec is not None:
+                yield rec
 
 def iter_record(log_file: str | Path) -> Iterable[LogRecord]:
     "Đọc từng dòng trong file log và trả về các bản ghi log hợp lệ"
