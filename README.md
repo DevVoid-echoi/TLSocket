@@ -2,6 +2,9 @@
 
 [![CI](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/DevVoid-echoi/TLSocket/branch/main/graph/badge.svg)](https://codecov.io/gh/DevVoid-echoi/TLSocket)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Demo](docs/demo.gif)
+
 
 A multi-threaded client/server chat system built on Python's standard library
 (`socket`, `ssl`, `threading`). The focus is a security-centric architecture:
@@ -14,24 +17,14 @@ module.
 
 ## Key Features
 
-* **TLS transport** — every client/server connection is wrapped in `ssl` using
-  the certificate in `certs/`.
-* **Multi-threaded server** — one thread per client, with `threading.Lock`
-  (`state_lock`, `ip_lock`) guarding shared state.
-* **Authentication** — registration and login with salted SHA-256 password
-  hashing; in-RAM session objects (`user_sessions`).
-* **RBAC** — `admin`, `moderator`, `user` roles gate `/kick`, `/ban`, `/unban`,
-  `/set` (see `auth/rbac.py`).
-* **Server console** — the server operator can run `/set`, `/kick`, `/ban`,
-  `/unban` directly from the server terminal; role changes are pushed to live
-  client sessions without a reconnect.
-* **Brute-force & flood protection** — repeated failed logins from an IP trigger
-  an escalating temporary block (`security/brute_force_detection.py`); per-IP
-  connection caps (`MAX_CONNECTIONS_PER_IP`) limit connection floods.
-* **Structured logging** — operational events go to `logs/server.log`, security
-  events to `logs/security.log`, brute-force alerts to `logs/alerts.log`.
-* **Log analysis** — `log_parser/` streams a log file and reports login stats,
-  error rate, top IPs, and suspicious / brute-force / DDoS indicators.
+| Tính năng | Mô tả |
+|---|---|
+| TLS transport | Mọi kết nối bọc `ssl`, cert trong `certs/` |
+| RBAC | `admin`/`moderator`/`user`, gate qua `auth/rbac.py` |
+| Brute-force protection | Block IP tạm thời sau N lần login sai (`security/brute_force_detection.py`) |
+| Structured logging | JSON-lines, `logs/server.log` + `logs/security.log` |
+| Observability | Prometheus `/metrics` + Grafana dashboard sẵn |
+| Log analyzer | CLI `tlsocket-analyze` — thống kê, `--follow`, JSON/table |
 
 ---
 
@@ -78,6 +71,16 @@ default, regardless of the directory you launch from. Override with `TLSOCKET_DA
 `TLSOCKET_CERT_FILE` / `TLSOCKET_KEY_FILE`), plus `TLSOCKET_HOST` /
 `TLSOCKET_PORT`. See `.env.example`.
 
+```mermaid
+flowchart LR
+    C[Client] -- TLS handshake --> S[ChatServer._accept_loop]
+    S -- spawn thread --> H[handle_new_connection]
+    H -- LOGIN/REGISTER --> A[auth/authentication.py]
+    A -- success --> R[ClientRegistry.add]
+    R -- spawn thread --> M[handle_messages]
+    M -- broadcast --> C
+```
+
 ---
 
 ## Getting Started
@@ -98,22 +101,10 @@ default, regardless of the directory you launch from. Override with `TLSOCKET_DA
   > from a real CA (e.g. [Let's Encrypt](https://letsencrypt.org/)) instead
   > of `scripts/gen_certs.sh`.
 
-### Install
-
+## Quickstart
 ```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-```
-
-### Run the server
-
-```bash
-tlsocket-server
-```
-
-### Run a client (separate terminal)
-
-```bash
+pip install -e ".[dev]" && ./scripts/gen_certs.sh
+tlsocket-server &
 tlsocket-client
 ```
 
