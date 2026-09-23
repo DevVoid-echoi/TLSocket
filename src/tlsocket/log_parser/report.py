@@ -29,7 +29,7 @@ def to_json(report: dict[str, Any]) -> str:
 def to_table(report: dict[str, Any]) -> str:
     top_ips = [f"  {ip:<20} {count}" for ip, count in report['top_5_IPs']] or ["  (none)"]
     top_users = [f"  {user:<20} {count}" for user, count in report['top_targeted_users']] or ["  (none)"]
-    peak_hours = [f"  {hour}  {count} events]" for hour, count in report['peak_attack_hours']] or ["  (none)"]
+    peak_hours = [f"  {hour}  {count} events" for hour, count in report['peak_attack_hours']] or ["  (none)"]
 
     lines = [
         f"Total requests:       {report['total_requests']}",
