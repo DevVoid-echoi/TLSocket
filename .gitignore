@@ -15,6 +15,9 @@ logs/
 certs/
 old_format_log/
 samples/
+bench_data/
+bench_logs/
+bench_results/
 
 # Secrets (was previously ignored via src/tlsocket/auth/.gitignore)
 src/tlsocket/auth/password.py

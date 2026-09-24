@@ -225,16 +225,15 @@ def handle_new_connection(raw_client, address, context):
             except Exception: # nosec B110 - best-effort cleanup, không có gì để retry ở bước xác thực thất bại
                 pass
             return
-                
-        nickname = session["username"]
 
         nickname = session["username"]
-        registry.add(client, Session(username=nickname, role=session["role"]))
-        reserved_username = None
 
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")
-        client.sendall(f"OK Connected as {nickname}, role:{session['role']}\n".encode())
+        if not registry.send(client, f"OK Connected as {nickname}, role:{session['role']}\n".encode()):
+            raise OSError("Client disconnected during login")
+        registry.add(client, Session(username=nickname, role=session["role"]))
+        reserved_username = None
         broadcast(chat_message(f"{nickname} joined the chat!").encode(), sender=client)
 
         thread = threading.Thread(target=handle_messages, args=(client, real_ip_addr), daemon=True)
