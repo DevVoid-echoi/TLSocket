@@ -1,7 +1,7 @@
 # Benchmarks
 
-**Status: partial.** This document currently covers one load point (250 clients) for the
-thread-per-client server. More load levels and an asyncio comparison are planned (see
+**Status: partial.** This document currently covers three load points (250, 500 and 1000
+clients) for the thread-per-client server. More load levels and an asyncio comparison are planned (see
 [Planned work](#planned-work)). Numbers are from a single laptop and should be read as a
 baseline for comparison, not as a capacity claim.
 
@@ -9,18 +9,20 @@ baseline for comparison, not as a capacity claim.
 
 - **Machine:** Apple M1 (8 cores), 8 GB RAM, macOS 27.0, Python 3.12.4, argon2-cffi 25.1.0.
   Server and load generator run on the **same machine** over loopback, with TLS enabled.
-- **Code under test:** commit `876fb08` (thread-per-client server).
+- **Code under test:** commit `876fb08` (thread-per-client server). The N = 500 and N = 1000
+  runs were made at `e1ed466` and `c35410a`, which differ from `876fb08` only in this document.
 - **Tool:** `benchmarks/loadtest.py` — an asyncio client that logs in N users, then has S of
   them publish R messages/s for D seconds while all N listen. Each message carries a
   timestamp, so every receiver measures end-to-end latency.
-- **Scenario:** N = 250 clients, S = 10 senders, R = 5 msg/s, D = 30 s. The server broadcasts
-  each message to every other client, so the offered load is `S × R × (N − 1)` =
-  12,450 deliveries/s.
+- **Scenario:** N clients (250, 500 and 1000 so far), S = 10 senders, R = 5 msg/s, D = 30 s.
+  The server broadcasts each message to every other client, so the offered load is
+  `S × R × (N − 1)`: 12,450 deliveries/s at N = 250, 24,950 at N = 500 and 49,950 at N = 1000.
 - **Runs:** one 10 s warm-up (discarded), then three measured runs; the table reports the
   median of the three. A fresh server process is started for each load level.
 - **Server resources:** sampled with `top -pid <server> -stats pid,cpu,mem,th -s 2`. The first
   sample is discarded (it is a cumulative average). "Steady" values are the median of the
   samples taken while all N clients were connected; "login peak" is the maximum over the run.
+  Because samples are 2 s apart, the login peak is a lower bound and varies between sessions.
 - **Abuse limits relaxed:** all clients share `127.0.0.1`, so the per-IP connection cap and the
   per-user message rate limit were raised via `TLSOCKET_MAX_CONN_PER_IP` and
   `TLSOCKET_MAX_MSGS_PER_WINDOW`. Logins run 20 at a time (`--login-concurrency 20`).
@@ -29,22 +31,36 @@ baseline for comparison, not as a capacity claim.
 
 ## Results: thread-per-client server
 
-| N | Offered load (deliveries/s) | Login wall | Login p95 | Delivered (deliveries/s) | Loss | Latency p50 / p95 / p99 | CPU (steady) | RSS (steady / login peak) | Threads |
+| N | Offered load (deliveries/s) | Login wall | Login p95 | Delivered (deliveries/s) | Loss | Latency p50 / p95 / p99 | CPU (steady) | RSS (steady / login peak, sampled) | Threads |
 |---|---|---|---|---|---|---|---|---|---|
 | 250 | 12,450 | 7.0 s | 766 ms | 12,371 | 0.00% | 4.9 / 11.0 / 11.6 ms | 13.6% of one core | 54 MB / 1,105 MB | 253 |
+| 500 | 24,950 | 14.5 s | 789 ms | 24,798 | 0.00% | 5.7 / 8.8 / 10.1 ms | 14.7% of one core | 75 MB / 502 MB | 503 |
+| 1000 | 49,950 | 33.2 s | 998 ms | 49,667 | 0.00% | 10.4 / 24.3 / 34.5 ms | 24.4% of one core | 116 MB / 1,182 MB | 1003 |
 
-All three runs delivered 373,500 of 373,500 expected messages (no loss, no client dropped).
+In every measured run all expected messages were delivered (373,500 of 373,500 at N = 250;
+753,490 of 753,490 at N = 500; 1,508,490 of 1,508,490 at N = 1000) and no client was dropped.
+
+The N = 1000 row comes with a caveat: load-generator saturation was not ruled out (see
+[Limitations](#limitations)), so its latency should be read as an upper bound.
 
 ## Observations
 
-- **The server is far from saturated at this load.** Relaying ~12.4k deliveries/s used a median
-  of ~13.6% of one core. Whether the knee is at a few hundred or a few thousand clients is not yet measured.
+- **The server is not saturated at these loads.** Offered load doubled twice (about 12.4k, 24.8k
+  and 49.7k deliveries/s) while steady CPU rose only from 13.6% to 14.7% to 24.4% of one core
+  and p99 latency (median of three runs) went from 11.6 to 10.1 to 34.5 ms. CPU grew more slowly
+  than load; the cause has not been investigated, so no per-delivery CPU cost is claimed.
+- **Latency starts to rise at N = 1000** (p50 5.7 ms at N = 500 to 10.4 ms, p99 10.1 to
+  34.5 ms), but the generator caveat below applies, so this is not yet evidence of the server's
+  knee. The knee has not been located.
 - **Login, not relaying, dominates CPU and memory peaks.** Argon2id verification runs in
-  parallel across cores: CPU peaked around 870% and RSS around 1.1 GB during the login burst,
-  then dropped to ~54 MB.
-- **Thread count is not the memory cost here.** 253 threads with ~54 MB resident memory shows
-  that per-thread stacks are reserved address space, not resident memory. This qualifies the
-  "~8 MB per thread" figure in [ADR-001](DECISIONS.md).
+  parallel across cores: CPU peaked at roughly 800–870% during the login burst, and RSS at
+  0.5–1.2 GB (502 MB and 791 MB in two N = 500 sessions, 1,105 MB at N = 250, 1,182 MB at
+  N = 1000), then dropped to the steady values. The RSS peaks are sampling-dependent, so treat
+  them as lower bounds.
+- **Thread count is not the memory cost here.** 253, 503 and 1003 threads use ~54, 75 and
+  116 MB resident memory, i.e. roughly 82–84 KB per additional connection (derived from the
+  250 to 500 and 500 to 1000 intervals). Per-thread stacks are reserved address space, not
+  resident memory, which qualifies the "~8 MB per thread" figure in [ADR-001](DECISIONS.md).
 
 ## A bug found by the load test
 
@@ -70,7 +86,12 @@ same class of bug.
   load the generator (one Python process) may saturate before the server does.
 - `log_event` writes log files synchronously, so logging cost is part of the server's cost.
 - Login time is dominated by Argon2id and is reported separately from relay performance.
-- One load point only; no confidence intervals beyond the three runs.
+- The load generator was not verified at N = 1000. The send rate held (sent 101% of target),
+  but the send loop catches up after any delay, so that check cannot rule out a saturated
+  generator, and generator CPU was not recorded. Latency at N = 1000 may therefore include
+  delay inside the generator. Latency was flat between N = 250 and N = 500, which argues
+  against the same problem at those points.
+- Three load points only; no confidence intervals beyond the three runs per point.
 
 ## Reproducing
 
@@ -99,8 +120,10 @@ the server between load levels so memory numbers start from a clean process.
 
 ## Planned work
 
-- Measure N = 50, 100, 500 and 1000, and a fixed-N sweep over the send rate to find the
-  maximum sustainable message rate.
+- Re-run N = 1000 while recording load-generator CPU (or event-loop lag) to decide whether the
+  latency rise is the server's or the generator's.
+- Measure N = 50 and 100, and a fixed-N sweep over the send rate to find the maximum
+  sustainable message rate.
 - Add an asyncio server variant and compare it with this baseline under identical methodology
   (same machine, TLS, limits and load generator), then update ADR-001 with measured numbers.
 - If the load generator saturates, split it across several processes before trusting results
