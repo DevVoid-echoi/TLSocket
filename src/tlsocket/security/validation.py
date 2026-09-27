@@ -1,4 +1,5 @@
 import re
+import unicodedata
 
 from tlsocket.config import (
     MAX_MESSAGE_LENGTH,
@@ -29,8 +30,8 @@ def validate_nickname(nickname: str) -> tuple[bool, str]:
 def validate_message(message:str) -> tuple[bool, str]:
     if not message or not isinstance(message, str):
         return False, "EMPTY_MESSAGE Message cannot be empty."
-    if "\x00" in message:
-        return False, "INVALID_CHARACTERS Message cannot contain null characters."
+    if any(unicodedata.category(c) == "Cc" for c in message):
+        return False, "INVALID_CHARACTERS Message cannot contain control characters."
     
     msg_clean = message.strip()
     if len(msg_clean) == 0:

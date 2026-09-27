@@ -96,3 +96,12 @@ def test_empty_command_line(line):
     assert(cmd, args) == ("", [])
     assert err.startswith("EMPTY_COMMAND")
                             
+@pytest.mark.parametrize("bad", ["hi\x1b[2J", "line\rspoof", "tab\there", "bell\x07", "csi\x9b31m"])
+def test_message_rejects_control_characters(bad):
+    valid, msg = validate_message(bad)
+    assert not valid
+    assert msg.startswith("INVALID_CHARACTERS")
+
+@pytest.mark.parametrize("good", ["xin chào 😀", "Tiếng Việt: ăn cơm chưa?", "plain ascii"])
+def test_message_accepts_ordinary_unicode_text(good):
+    assert validate_message(good) == (True, "OK")
