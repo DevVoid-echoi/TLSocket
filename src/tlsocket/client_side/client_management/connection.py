@@ -24,7 +24,7 @@ def connect(host: str, port: int, cert_file: str | Path) -> ssl.SSLSocket:
     client.connect((host,port))
 
     client.settimeout(0.2)
-    line, _ = read_line(client, "")
+    line, _ = read_line(client, b"")
     client.settimeout(None)
     if line is not None:
         client.close()
@@ -50,26 +50,27 @@ def connect_with_backoff(
 
 stop_threads = False
 
-def read_line(sock: ssl.SSLSocket, buffer: str) -> tuple[str | None, str]:
+def read_line(sock: ssl.SSLSocket, buffer: bytes) -> tuple[str | None, bytes]:
     """Read full-line messages"""
-    while "\n" not in buffer:
+    while b"\n" not in buffer:
         if len(buffer) > MAX_LINE_LENGTH:
             return None, buffer
         try:
-            chunk = sock.recv(4096).decode("utf-8", errors="replace")
-            if not chunk:
-                return None, buffer
-            buffer += chunk
+            chunk = sock.recv(4096)
         except(ConnectionResetError, BrokenPipeError, OSError):
             return None, buffer
-
-    line, buffer = buffer.split("\n", 1)
-    return line.strip(), buffer
+        if not chunk:
+            return None, buffer
+        buffer += chunk
+    raw, buffer = buffer.split(b"\n", 1)
+    if len(raw) > MAX_LINE_LENGTH:
+        return None, buffer
+    return raw.decode("utf-8", errors="replace").strip(), buffer
 
 def receive(client: ssl.SSLSocket, nickname: str) -> None:
     """Handle different types of received messages"""
     global stop_threads
-    buffer = ""
+    buffer = b""
     while not stop_threads:
         line, buffer = read_line(client, buffer)
         """Close connection if not receive any message"""

@@ -118,7 +118,7 @@ def handle_new_connection(raw_client, address, context):
     log_event("USER_CONNECTED", ip=ip_addr)
 
     try:
-        buffer = ""
+        buffer = b""
         session = None
 
         reserved_username = None
