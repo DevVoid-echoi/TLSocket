@@ -19,12 +19,12 @@ def test_release_ip_slot_frees_up_room():
     registry.release_ip_slot("sock1")
     assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is True 
 
-def test_release_ip_slot_uses_fallback_when_socket_unknown():
+def test_release_ip_slot_ignores_unknown_socket():
     registry = ClientRegistry(max_connections_per_ip=1)
     registry.try_reserve_ip_slot("sock1", "1.1.1.1")
     assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False
-    registry.release_ip_slot("unknow_sock", fallback_ip="1.1.1.1")
-    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is True 
+    registry.release_ip_slot("unknow_sock")
+    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False 
 
 def test_add_and_session():
     registry = ClientRegistry(max_connections_per_ip=5)

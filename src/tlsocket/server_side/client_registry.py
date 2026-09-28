@@ -34,9 +34,11 @@ class ClientRegistry:
             self._client_ips[client_socket] = ip
             return True
 
-    def release_ip_slot(self, client_socket, fallback_ip: str | None = None) -> None:
+    def release_ip_slot(self, client_socket) -> None:
         with self._lock:
-            ip = self._client_ips.pop(client_socket, None) or fallback_ip
+            ip = self._client_ips.pop(client_socket, None)
+            if ip is None:
+                return
             if ip and ip in self._ip_counts:
                 self._ip_counts[ip] -= 1
                 if self._ip_counts[ip] <= 0:

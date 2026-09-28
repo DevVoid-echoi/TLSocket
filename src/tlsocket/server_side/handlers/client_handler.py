@@ -38,11 +38,11 @@ def read_line(sock, buffer):
 def accept_new_client(client_socket, client_ip):
     return registry.try_reserve_ip_slot(client_socket, client_ip)
 
-def clean_up_client(client, disconnect_msg, client_ip=None):
+def clean_up_client(client, disconnect_msg):
     """Clean up disconnected users"""
     session = registry.remove(client)
     message_limiter.forget(client)
-    registry.release_ip_slot(client, fallback_ip=client_ip)
+    registry.release_ip_slot(client)
 
     try:
         client.close()
@@ -80,7 +80,7 @@ def handle_messages(client, client_ip=None):
         line, buffer = read_line(client, buffer)
         """Clean up disconnected user if not receive any message"""
         if line is None:
-            clean_up_client(client, "disconnected", client_ip)
+            clean_up_client(client, "disconnected")
             break
         
         if len(line) > 2000:
@@ -90,7 +90,7 @@ def handle_messages(client, client_ip=None):
         session = registry.get_session(client)
         if not session:
             client.send(error(ErrorCode.NOT_AUTHENTICATED).encode())
-            clean_up_client(client, "disconnected", client_ip)
+            clean_up_client(client, "disconnected")
             break
 
         user_role = session.role

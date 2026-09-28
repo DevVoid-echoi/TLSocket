@@ -96,11 +96,11 @@ def handle_new_connection(raw_client, address, context):
         client = context.wrap_socket(raw_client, server_side=True)
     except ssl.SSLError as e:
         print(f"[TLS ERROR] SSL error occurred: {e}")
-        clean_up_client(raw_client, "TLS_HANDSHAKE_FAILED", client_ip=real_ip_addr)
+        clean_up_client(raw_client, "TLS_HANDSHAKE_FAILED")
         return
     except OSError as e:
         print(f"[ERROR] Socket error during TLS Handshake with {address}: {e}")
-        clean_up_client(raw_client, "SOCKET_ERROR", client_ip=real_ip_addr)
+        clean_up_client(raw_client, "SOCKET_ERROR")
         return
     
     if not accept_new_client(client, real_ip_addr):
@@ -221,7 +221,7 @@ def handle_new_connection(raw_client, address, context):
         # --- Check if session is valid ---
         if not session:
             try:
-                clean_up_client(client, "AUTHENTICATION_FAILED", client_ip=real_ip_addr)
+                clean_up_client(client, "AUTHENTICATION_FAILED")
             except Exception: # nosec B110 - best-effort cleanup, không có gì để retry ở bước xác thực thất bại
                 pass
             return
@@ -243,7 +243,7 @@ def handle_new_connection(raw_client, address, context):
         print(f"[ERROR] Connection error with {address}: {e}")
         log_event("CONNECTION_ERROR", username="Unknown", ip=real_ip_addr, extra_info=f"error={e}")
         try:
-            clean_up_client(client, "CONNECTION_ERROR", client_ip=real_ip_addr)
+            clean_up_client(client, "CONNECTION_ERROR")
         except Exception: # nosec B110 - best-effort cleanup khi đang xử lý lỗi kết nối, không retry được nữa
             pass
         return
