@@ -58,6 +58,12 @@ async def sender(w, rate, duration):
             await asyncio.sleep(delay)
     return sent
 
+async def lag_probe(samples, stop):
+    while not stop.is_set():
+        t0 = time.perf_counter()
+        await asyncio.sleep(0.01)
+        samples.append((time.perf_counter() - t0 - 0.01) * 1000)
+
 async def main(a):
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
     ctx.load_verify_locations(a.cert)
@@ -77,8 +83,12 @@ async def main(a):
     readers = [asyncio.create_task(reader(r, latencies, received, closed, i)) for i, (r, _) in enumerate(conns)]
     await asyncio.sleep(1)
 
+    lag, stop = [], asyncio.Event()
+    probe = asyncio.create_task(lag_probe(lag, stop))
     t1 = time.perf_counter()
     counts = await asyncio.gather(*(sender(conns[i][1], a.rate, a.duration) for i in range(a.senders)))
+    stop.set()
+    await probe
     run_wall = time.perf_counter() - t1
     await asyncio.sleep(2)
 
@@ -94,6 +104,7 @@ async def main(a):
     expected = sent * (a.clients - 1)
     delivered = len(latencies)
     lat = sorted(x / 1e6 for x in latencies)
+    sl = sorted(lag)
     bad = []
     for i in range(a.clients):
         want = sent - (counts[i] if i<a.senders else 0)
@@ -106,6 +117,7 @@ async def main(a):
     print(f"delivered: {delivered} / expected {expected}  loss={1 - delivered / max(expected, 1):.2%}")
     print(f"throughput: {delivered / run_wall:.0f} deliveries/s")
     print(f"latency : p50={pct(lat, 50):.1f}ms  p95={pct(lat, 95):.1f}ms  p99={pct(lat, 99):.1f}ms")
+    print(f"gen lag : p50={pct(sl, 50):.1f}ms  p99={pct(sl, 99):.1f}ms  max={sl[-1]:.1f}ms")
     print("Client & number of messages missing:", bad[:10] or "None")
     print("Reader found EOF:", sorted(closed) or "None", " | reader error:", errs or "None")
 
