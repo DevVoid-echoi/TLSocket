@@ -33,5 +33,4 @@ services:
       - prometheus
 
 volumes:
-  tlsocket-data:
   tlsocket-logs:

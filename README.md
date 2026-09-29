@@ -33,13 +33,16 @@ module.
 ```text
 src/tlsocket/
 ├── config.py                     # HOST/PORT, limits, thresholds, runtime file paths
+├── protocol.py                   # Command/ErrorCode enums, line-protocol formatting
+├── metrics.py                    # Prometheus metrics (connections, logins, messages...)
+├── logging_config.py             # dictConfig for JSON-lines logging
 ├── auth/
 │   ├── authentication.py         # register / login / set_user_role, password hashing
-│   ├── password.py               # (constants)
 │   └── rbac.py                   # Permission + ROLES_PERMISSIONS, has_permission()
 ├── security/
 │   ├── validation.py             # nickname / message / command validation
 │   ├── brute_force_detection.py  # BruteForceDetector (stateful, persisted to data/)
+│   ├── rate_limiter.py           # SlidingWindowLimiter (flood/register/message rate)
 │   └── logger.py                 # alert logger
 ├── client_side/
 │   ├── client.py                 # client entry point (tlsocket-client)
@@ -48,19 +51,25 @@ src/tlsocket/
 │       └── instructions.py       # role-aware help text
 ├── server_side/
 │   ├── server.py                 # server entry point (tlsocket-server) + console thread
+│   ├── client_registry.py        # ClientRegistry: sessions, per-IP caps, send lock
 │   ├── handlers/
-│   │   ├── client_handler.py     # client registry, broadcast, message loop, cleanup
-│   │   ├── ban_handler.py        # ban-list file I/O
-│   │   └── lock.py               # shared locks
+│   │   ├── client_handler.py     # broadcast, message loop, cleanup
+│   │   └── ban_handler.py        # ban-list file I/O
 │   └── logs_management/
 │       └── record_logs.py        # log_event(), logger setup
 └── log_parser/
     ├── main.py                   # CLI entry point (tlsocket-analyze)
     ├── parser.py                 # stream parser (generator)
     ├── analyzer.py               # aggregation
+    ├── filters.py                # --since / time-window filtering
+    ├── report.py                 # JSON/table report builder
     └── models.py                 # LogRecord dataclass
 
-tests/                            # brute-force / DDoS simulation scripts
+tests/                            # pytest suite (unit/ + integration/)
+benchmarks/                       # load test harness + brute-force/DDoS simulation scripts
+docs/                             # ARCHITECTURE.md, DECISIONS.md, SECURITY.md, BENCHMARKS.md
+deploy/                           # Prometheus + Grafana provisioning
+scripts/                          # gen_certs.sh, healthcheck.py
 data/                             # user.json, ban.txt, brute_force_state.json (gitignored)
 certs/                            # server.crt / server.key (gitignored)
 logs/                             # *.log (gitignored)
@@ -87,8 +96,8 @@ flowchart LR
 
 ### Prerequisites
 
-* Python 3.10+ (developed on 3.12). Runtime dependency: `argon2-cffi`
-  (password hashing).
+* Python 3.10+ (developed on 3.12). Runtime dependencies: `argon2-cffi`
+  (password hashing), `python-json-logger`, `prometheus-client`.
 * A TLS key pair. Generate a self-signed pair for local dev:
 
   ```bash
@@ -178,6 +187,7 @@ default `9100`): connection counts, login/registration attempts by result,
 messages relayed, and currently-blocked IPs.
 
 ```bash
+./scripts/gen_certs.sh   # if certs/ does not exist yet — docker-compose.yml mounts it into the container
 docker compose up --build
 ```
 
