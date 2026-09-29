@@ -13,13 +13,13 @@ class _FakeSocket:
 
 def test_read_line_assembles_across_chunks():
     sock = _FakeSocket([b"LOG", b"IN alice pw\nleftover"])
-    line, buffer = read_line(sock, "")
+    line, buffer = read_line(sock, b"")
     assert line == "LOGIN alice pw"
-    assert buffer == "leftover"
+    assert buffer == b"leftover"
 
 def test_read_line_returns_none_on_eof():
     sock = _FakeSocket([b""])
-    line, buffer = read_line(sock, "")
+    line, buffer = read_line(sock, b"")
     assert line is None
 
 def test_read_line_returns_none_on_socket_error():
@@ -27,7 +27,7 @@ def test_read_line_returns_none_on_socket_error():
         def recv(self, bufsize):
             raise ConnectionResetError()
 
-    line, buffer = read_line(_ErrSocket(), "")
+    line, buffer = read_line(_ErrSocket(), b"")
     assert line is None
 
 def test_read_line_stops_on_oversized_line_without_consuming_unbounded_data():
@@ -38,7 +38,7 @@ def test_read_line_stops_on_oversized_line_without_consuming_unbounded_data():
             call_count["n"] += 1
             return b"a" * 1024
 
-    line, buffer = read_line(_InfiniteSocket(), "")
+    line, buffer = read_line(_InfiniteSocket(), b"")
     assert line is None
     assert call_count["n"] < 100
     assert len(buffer) > MAX_LINE_LENGTH

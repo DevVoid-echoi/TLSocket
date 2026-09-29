@@ -25,7 +25,7 @@ def main() -> None:
         print(f"Connection error: {e}")
         sys.exit(1)
 
-    buffer = ""
+    buffer = b""
     nickname = None
     user_role = "user"
 
@@ -52,7 +52,7 @@ def main() -> None:
             print(">> Server closed connection - Retrying...")
             try:
                 client = connect_with_backoff(CLIENT_HOST, PORT, CERT_FILE)
-                buffer = ""
+                buffer = b""
             except ServerRejectedError as e:
                 print(f"Connection refused: {e.detail}")
                 sys.exit(1)

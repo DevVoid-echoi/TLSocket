@@ -7,6 +7,12 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, settings
+
+settings.register_profile("dev", max_examples=200, deadline=None,
+                          suppress_health_check=[HealthCheck.too_slow])
+settings.register_profile("ci", parent=settings.get_profile("dev"), derandomize=True)
+settings.load_profile("ci" if os.environ.get("CI") else "dev")
 
 # --- Redirect TRƯỚC khi bất kỳ 'import tlsocket' nào xảy ra ------------------
 _TMP_ROOT = Path(tempfile.mkdtemp(prefix="tlsocket-tests-"))

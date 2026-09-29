@@ -28,6 +28,7 @@ src/tlsocket/auth/password.py
 .coverage.*
 htmlcov/
 coverage.xml
+.hypothesis/
 
 # OS
 .DS_Store

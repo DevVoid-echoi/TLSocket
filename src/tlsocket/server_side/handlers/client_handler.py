@@ -20,28 +20,29 @@ message_limiter = SlidingWindowLimiter(max_events=MAX_MESSAGES_PER_WINDOW, windo
 
 def read_line(sock, buffer):
     """Read full-line messages"""
-    while "\n" not in buffer:
+    while b"\n" not in buffer:
         if len(buffer) > MAX_LINE_LENGTH:
             return None, buffer
         try:
-            chunk = sock.recv(4096).decode("utf-8", errors="replace")
-            if not chunk:
-                return None, buffer
-            buffer += chunk
+            chunk = sock.recv(4096)
         except(ConnectionResetError, BrokenPipeError, OSError):
             return None, buffer
-
-    line, buffer = buffer.split("\n", 1)
-    return line.strip(), buffer
+        if not chunk:
+            return None, buffer
+        buffer += chunk
+    raw, buffer = buffer.split(b"\n", 1)
+    if len(raw) > MAX_LINE_LENGTH:
+        return None, buffer
+    return raw.decode("utf-8", errors="replace").strip(), buffer
 
 def accept_new_client(client_socket, client_ip):
     return registry.try_reserve_ip_slot(client_socket, client_ip)
 
-def clean_up_client(client, disconnect_msg, client_ip=None):
+def clean_up_client(client, disconnect_msg):
     """Clean up disconnected users"""
     session = registry.remove(client)
     message_limiter.forget(client)
-    registry.release_ip_slot(client, fallback_ip=client_ip)
+    registry.release_ip_slot(client)
 
     try:
         client.close()
@@ -74,12 +75,12 @@ def kick_user(name):
     
 def handle_messages(client, client_ip=None):
     """Handle received messages from users"""
-    buffer = ""
+    buffer = b""
     while True:
         line, buffer = read_line(client, buffer)
         """Clean up disconnected user if not receive any message"""
         if line is None:
-            clean_up_client(client, "disconnected", client_ip)
+            clean_up_client(client, "disconnected")
             break
         
         if len(line) > 2000:
@@ -89,7 +90,7 @@ def handle_messages(client, client_ip=None):
         session = registry.get_session(client)
         if not session:
             client.send(error(ErrorCode.NOT_AUTHENTICATED).encode())
-            clean_up_client(client, "disconnected", client_ip)
+            clean_up_client(client, "disconnected")
             break
 
         user_role = session.role
