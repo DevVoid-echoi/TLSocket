@@ -175,9 +175,6 @@ a finished state:
   permission-denied replies, the "commands unlocked" notice in
   `client_handler.py`, and the server-console `/set` broadcast in
   `server.py`) are not yet guarded the same way.
-- `server_side/handlers/lock.py` (`state_lock`/`ip_lock`/`send_lock`) is
-  dead code left over from an earlier design — the locks it defines are
-  never imported anywhere. Scheduled for removal in a follow-up cleanup PR.
 - **No session revocation / forced logout** beyond `/ban` (which kicks and
   blocks future logins) — there's no way to invalidate one specific live
   session (e.g. a stolen/compromised client) without banning the account
