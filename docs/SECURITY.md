@@ -85,7 +85,7 @@ framing, or manipulates other clients.
 - `validate_nickname`: alphanumeric + underscore only, length-bounded,
   rejects `\n`/`\r`/NUL — the framing characters an attacker would need to
   inject a fake protocol line via a nickname.
-- `validate_message`: length-bounded, rejects NUL.
+- `validate_message`: length-bounded, rejects any Unicode control character (not just NUL) — including ANSI/terminal escape sequences that could be used to manipulate another client's terminal.
 - `parse_and_validate_command`: strict argument-count checking for
   `KICK`/`BAN`/`UNBAN`/`SET` before they're acted on.
 - There's no database and no dynamic code execution reachable from user
@@ -128,21 +128,56 @@ password comparison) and **transparently migrated** to Argon2id on their
 next successful login (`needs_rehash()` in the same file) — no forced
 password reset.
 
+## Fuzzing and property tests
+
+Beyond the threat model above, this project uses [Hypothesis](https://hypothesis.readthedocs.io/)
+to fuzz the protocol parser, input validators, connection framing, and the
+per-IP connection registry — both as isolated property tests and as
+wire-level fuzzing against a real running server. Run them with
+`pytest tests/unit/test_fuzz_*.py tests/integration/test_wire_fuzz.py -v`.
+
+Bugs found this way, all fixed before release:
+
+- **Terminal escape injection** (`a1309be`): `validate_message()` only
+  blocked NUL bytes, so ANSI/C1 control sequences (`\x1b[2J`, carriage
+  returns to spoof another line, etc.) passed through and were printed
+  as-is by the client.
+- **Multi-byte character corruption** (`c4105e5`): `read_line()` decoded
+  each `recv()` chunk independently, so a UTF-8 character split across two
+  reads (e.g. typing Vietnamese) was corrupted into mojibake.
+- **Soft line-length limit** (`c4105e5`): `MAX_LINE_LENGTH` was only
+  checked before each `recv()`, so a single chunk that already contained a
+  newline past the limit produced an oversized line — the cap could be
+  bypassed by controlling chunk boundaries.
+- **Per-IP connection-limit bypass** (`e874c5c`): a failed TLS handshake
+  (before a connection slot was ever reserved) still decremented the
+  per-IP connection counter via a "fallback IP" parameter, letting one
+  extra client past `MAX_CONNECTIONS_PER_IP` for every failed handshake
+  from that IP — found with a Hypothesis stateful test plus an integration
+  test performing a real failed handshake.
+
+Property tests run with 200 examples locally (random) and a fixed seed on
+CI (`tests/conftest.py` Hypothesis profiles), so a regression is caught
+deterministically in CI even if it wasn't hit locally.
+
 ## Known gaps (tracked, not fixed yet)
 
 Being upfront about what's still open, rather than presenting the above as
 a finished state:
 
-- **Partial write-lock coverage**: a `send_lock` (added after an
-  integration test caught it corrupting a live TLS session) serializes
-  concurrent writes to the same client socket in `broadcast()` and
-  `kick_user()`'s personal message. Several other direct
-  `client.send()`/`sendall()` call sites (auth `OK`/`ERR` responses in
-  `server.py`, permission-denied replies and the "commands unlocked"
-  notice in `client_handler.py`) are not yet guarded the same way — see the
-  comment above `send_lock`'s definition in
-  [`server_side/handlers/lock.py`](../src/tlsocket/server_side/handlers/lock.py)
-  for the current list.
+- **Partial write-lock coverage**: `ClientRegistry._send_lock`
+  ([`client_registry.py`](../src/tlsocket/server_side/client_registry.py))
+  serializes concurrent writes to the same client socket in `broadcast()`
+  and personal messages routed through `registry.send()` — including the
+  post-login `OK` reply (fixed after an integration test caught it
+  corrupting a live TLS session under concurrent logins). Several other
+  direct `client.send()`/`sendall()` call sites (auth `ERR` responses,
+  permission-denied replies, the "commands unlocked" notice in
+  `client_handler.py`, and the server-console `/set` broadcast in
+  `server.py`) are not yet guarded the same way.
+- `server_side/handlers/lock.py` (`state_lock`/`ip_lock`/`send_lock`) is
+  dead code left over from an earlier design — the locks it defines are
+  never imported anywhere. Scheduled for removal in a follow-up cleanup PR.
 - **No session revocation / forced logout** beyond `/ban` (which kicks and
   blocks future logins) — there's no way to invalidate one specific live
   session (e.g. a stolen/compromised client) without banning the account
