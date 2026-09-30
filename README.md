@@ -195,8 +195,8 @@ This starts the server (ports `9999` chat, `9100` metrics), Prometheus
 (`:9090`, scraping tlsocket every 5s), and Grafana (`:3000`, admin/admin,
 anonymous viewer access enabled) with a pre-provisioned "TLSocket" dashboard.
 
-<!-- TODO: screenshot of the Grafana dashboard after generating some traffic -->
-<!-- ![TLSocket Grafana dashboard](docs/grafana-dashboard.png) -->
+![TLSocket Grafana dashboard](docs/grafana-dashboard.png)
+![Prometheus targets](docs/prometheus-target.png)
 
 ---
 
