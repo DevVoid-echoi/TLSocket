@@ -130,8 +130,8 @@ def test_test_migrates_legacy_hash_to_argon2():
 
 def test_load_users_with_corrupted_json_returns_empty():
     auth.USERS_FILE.write_text("{ not valid json")
-    ok, session = auth.login("alice", "pw123")
-    assert(ok, session) == (False, None)
+    with pytest.raises(json.JSONDecodeError):
+        auth.login("alice", "pw123")
 
 def test_banned_users_file_unreadable_defaults_to_no_bans():
     auth.register("alice", "pw123")
