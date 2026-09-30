@@ -1,4 +1,4 @@
-# TLSocket — Multi-Threaded TLS Chat System with RBAC & Security Logging
+# TLSocket — TLS Chat Server with Authentication, RBAC, Threat Detection, Observability & Log Analysis
 
 [![CI](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DevVoid-echoi/TLSocket/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/DevVoid-echoi/TLSocket/branch/main/graph/badge.svg)](https://codecov.io/gh/DevVoid-echoi/TLSocket)
@@ -6,25 +6,31 @@
 ![Demo](docs/demo.gif)
 
 
-A multi-threaded client/server chat system built on Python's standard library
-(`socket`, `ssl`, `threading`). The focus is a security-centric architecture:
-TLS-encrypted transport, user authentication, Role-Based Access Control (RBAC),
-real-time administrative control from the server console, structured security
-logging, brute-force / connection-flood detection, and an offline log-analysis
-module.
+TLSocket is a multi-threaded TLS chat server built on Python's standard
+library (`socket`, `ssl`, `threading`) — but the chat protocol is really the
+workload that exercises a broader system. Five parts work together
+end-to-end: **TLS transport** with Argon2id **authentication**; **RBAC**
+(`admin`/`moderator`/`user`) enforced server-side, including live
+administrative control from the server console; **security controls**
+(brute-force detection, connection-flood limits, input validation) that feed
+the same structured logs; a **Prometheus/Grafana observability stack** for
+real-time metrics; and an **offline log-analysis CLI** for post-hoc
+investigation of that same log data. Each part is covered in more depth
+below and in [`docs/`](docs/).
 
 ---
 
 ## Key Features
 
-| Tính năng | Mô tả |
+| Feature | Description |
 |---|---|
-| TLS transport | Mọi kết nối bọc `ssl`, cert trong `certs/` |
-| RBAC | `admin`/`moderator`/`user`, gate qua `auth/rbac.py` |
-| Brute-force protection | Block IP tạm thời sau N lần login sai (`security/brute_force_detection.py`) |
+| TLS transport | Every connection wrapped in `ssl`, cert in `certs/` |
+| Authentication | Argon2id password hashing, transparent migration from legacy hashes (`auth/authentication.py`) |
+| RBAC | `admin`/`moderator`/`user`, enforced server-side via `auth/rbac.py` |
+| Security controls | Brute-force detection + connection-flood / rate limits (`security/`) |
 | Structured logging | JSON-lines, `logs/server.log` + `logs/security.log` |
-| Observability | Prometheus `/metrics` + Grafana dashboard sẵn |
-| Log analyzer | CLI `tlsocket-analyze` — thống kê, `--follow`, JSON/table |
+| Observability | Prometheus `/metrics` + pre-provisioned Grafana dashboard, Docker Compose stack |
+| Log analyzer | CLI `tlsocket-analyze` — analytics, `--follow`, JSON/table output |
 
 ---
 
