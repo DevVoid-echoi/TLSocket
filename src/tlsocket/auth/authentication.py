@@ -2,6 +2,7 @@ import hashlib
 import hmac
 import json
 import os
+import threading
 from typing import Any
 
 from argon2 import PasswordHasher
@@ -13,17 +14,15 @@ from tlsocket.security.validation import validate_nickname
 _ph = PasswordHasher()
 
 _LEGACY_SALT = "tcp_chat_room_salt_2026"
+_users_lock = threading.Lock()
 
 def _load_users() -> dict[str, Any]:
     """Read accounts from JSON file"""
     if not os.path.exists(USERS_FILE):
         return{}
-    try:
-        with open(USERS_FILE, encoding="utf-8") as f:
-            data: dict[str, Any] = json.load(f)
-            return data
-    except Exception:
-        return {}
+    with open(USERS_FILE, encoding="utf-8") as f:
+        data: dict[str, Any] = json.load(f)
+        return data
 
 def _load_banned_users() -> set[str]:
     if not os.path.exists(BAN_FILE):
@@ -37,8 +36,10 @@ def _load_banned_users() -> set[str]:
 def _save_users(users: dict[str, Any]) -> None:
     """Save accounts into JSON file"""
     USERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(USERS_FILE, "w", encoding="utf-8") as f:
+    tmp_path = USERS_FILE.parent / (USERS_FILE.name + ".tmp")
+    with open(tmp_path, "w", encoding="utf-8") as f:
         json.dump(users, f, indent=4)
+    os.replace(tmp_path, USERS_FILE)
 
 def _legacy_hash_password(password: str) -> str:
     """SHA-256 + salt tĩnh dùng chung cho mọi user - thuật toán CŨ, không an
@@ -79,36 +80,43 @@ def register(username: str, password: str, role: str = "user") -> tuple[bool, st
     if not valid:
         return False, "Invalid username"
 
-    users = _load_users()
+    password_hash = _hash_password(password)
 
-    if username in users:
-        print(f"[AUTH LOG] Register failed: User '{username}' already exists.")
-        return False, "User already exists"
+    with _users_lock:
+        users = _load_users()
 
-    users[username] = {
-        "password_hash": _hash_password(password),
-        "role": role
-    }
+        if username in users:
+            print(f"[AUTH LOG] Register failed: User '{username}' already exists.")
+            return False, "User already exists"
 
-    _save_users(users)
+        users[username] = {
+            "password_hash": password_hash,
+            "role": role
+        }
+
+        _save_users(users)
+
     print(f"[AUTH LOG] Register success: User '{username}' registered with role '{role}'.")
     return True, "Registration successful"
 
 def login(username: str, password: str) -> tuple[bool, dict[str, Any] | None]:
     """Login and start an information session"""
     username = username.strip().lower()
-    users = _load_users()
+    with _users_lock:
+        users = _load_users()
 
     if username not in users:
         print(f"[AUTH LOG] Login failed: Username '{username}' not found.")
         return False, None
 
-    user_data = users[username]
-    if verify_password(user_data["password_hash"], password):
-        if needs_rehash(user_data["password_hash"]):
-            user_data["password_hash"] = _hash_password(password)
-            users[username] = user_data
-            _save_users(users)
+    if verify_password(users[username]["password_hash"], password):
+        if needs_rehash(users[username]["password_hash"]):
+            new_hash = _hash_password(password)
+            with _users_lock:
+                users = _load_users()
+                if username in users:
+                    users[username]["password_hash"] = new_hash
+                    _save_users(users)
             print(f"[AUTH LOG] Rehashed password for user '{username}' to Argon2id.")
         banned_users = _load_banned_users()
         if username in banned_users:
@@ -117,9 +125,10 @@ def login(username: str, password: str) -> tuple[bool, dict[str, Any] | None]:
 
         # Create a session object to return when the authentication succeed
         else:
+            users = _load_users()
             session = {
                 "username": username,
-                "role": user_data.get("role", "user"),
+                "role": users[username].get("role", "user"),
                 "authentication": True
             }
 
@@ -137,13 +146,13 @@ def set_user_role(username: str, new_role: str) -> bool:
     if new_role not in ["admin","moderator", "user"]:
         print(f"[AUTH LOG] Set role failed: Invalid role '{new_role}'.")
         return False
+    with _users_lock:
+        users = _load_users()
+        if username not in users:
+            print(f"[AUTH LOG] Set role failed: User '{username}' not found.")
+            return False
 
-    users = _load_users()
-    if username not in users:
-        print(f"[AUTH LOG] Set role failed: User '{username}' not found.")
-        return False
-
-    users[username]["role"] = new_role
-    _save_users(users)
+        users[username]["role"] = new_role
+        _save_users(users)
     print(f"[AUTH LOG] Success: User '{username}' assigned role '{new_role}'.")
     return True
