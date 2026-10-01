@@ -182,6 +182,17 @@ a finished state:
 - **IP-based rate limiting only** — see the brute-force and flooding
   sections above; a motivated distributed attacker isn't meaningfully
   slowed down by any of it.
+- **IP slot reserved after the handshake, not before**: `accept_new_client()`
+  (which reserves one of `MAX_CONNECTIONS_PER_IP`) runs only after
+  `context.wrap_socket()` succeeds. Combined with no cap on total concurrent
+  connections, a flood of connections across many source IPs can still spawn
+  one thread each (bounded in lifetime by `HANDSHAKE_TIMEOUT_SECONDS` /
+  `AUTH_TIMEOUT_SECONDS`, but not bounded in count). Reserving the slot
+  before the handshake isn't a one-line change: `ClientRegistry` keys its
+  per-IP bookkeeping by the socket object, and `wrap_socket()` returns a new
+  `SSLSocket` distinct from the raw pre-handshake one — doing this safely
+  needs new `ClientRegistry` methods that separate "reserve by IP" from
+  "bind that reservation to a socket".
 
 ## Reporting a vulnerability
 
