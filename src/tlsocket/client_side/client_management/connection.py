@@ -93,9 +93,9 @@ def receive(client: ssl.SSLSocket, nickname: str) -> None:
         if line.startswith("ERR "):
             err = line[4:]
             sys.stdout.write(f"\r\033[K[Error] {err}\n")
+            sys.stdout.write(f"{nickname}: ")
             sys.stdout.flush()
-            stop_threads = True
-            break
+            continue
             
 
 def write(client: ssl.SSLSocket, nickname: str) -> None:
