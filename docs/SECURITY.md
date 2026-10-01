@@ -165,16 +165,20 @@ deterministically in CI even if it wasn't hit locally.
 Being upfront about what's still open, rather than presenting the above as
 a finished state:
 
-- **Partial write-lock coverage**: `ClientRegistry._send_lock`
-  ([`client_registry.py`](../src/tlsocket/server_side/client_registry.py))
-  serializes concurrent writes to the same client socket in `broadcast()`
-  and personal messages routed through `registry.send()` — including the
-  post-login `OK` reply (fixed after an integration test caught it
-  corrupting a live TLS session under concurrent logins). Several other
-  direct `client.send()`/`sendall()` call sites (auth `ERR` responses,
+- **Partial write-lock coverage**: `ClientRegistry` now gives each client
+  socket its own lock (`_get_send_lock()` in
+  [`client_registry.py`](../src/tlsocket/server_side/client_registry.py))
+  instead of one lock shared by every connection, and `send()` runs
+  `sendall()` under a `SEND_TIMEOUT_SECONDS` timeout (default 5s). Before
+  this, a single global lock plus no timeout meant one client that stopped
+  reading (full TCP receive buffer) could block `sendall()` forever while
+  holding that lock — freezing sends to every other client on the server,
+  including the post-login `OK` reply. Several other direct
+  `client.send()`/`sendall()` call sites (auth `ERR` responses,
   permission-denied replies, the "commands unlocked" notice in
   `client_handler.py`, and the server-console `/set` broadcast in
-  `server.py`) are not yet guarded the same way.
+  `server.py`) still bypass `registry.send()` entirely, so they get neither
+  the per-socket lock nor the timeout.
 - **No session revocation / forced logout** beyond `/ban` (which kicks and
   blocks future logins) — there's no way to invalidate one specific live
   session (e.g. a stolen/compromised client) without banning the account
