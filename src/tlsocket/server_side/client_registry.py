@@ -3,6 +3,8 @@ from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
+from tlsocket.config import SEND_TIMEOUT_SECONDS
+
 
 @dataclass
 class Session:
@@ -13,7 +15,7 @@ class Session:
 class ClientRegistry:
     def __init__(self, max_connections_per_ip: int) -> None:
         self._lock = threading.Lock()
-        self._send_lock = threading.Lock()
+        self._send_locks: dict[Any, threading.Lock] = {}
         self._max_connections_per_ip = max_connections_per_ip
 
         self._sessions: dict[Any, Session] = {}
@@ -25,6 +27,14 @@ class ClientRegistry:
     def __len__(self) -> int:
         with self._lock:
             return len(self._sessions)
+
+    def _get_send_lock(self, client_socket) -> threading.Lock:
+        with self._lock:
+            lock= self._send_locks.get(client_socket)
+            if lock is None:
+                lock = threading.Lock()
+                self._send_locks[client_socket] = lock
+        return lock
 
     def try_reserve_ip_slot(self, client_socket, ip: str) -> bool:
         with self._lock:
@@ -53,6 +63,7 @@ class ClientRegistry:
     def remove(self, client_socket) -> Session | None:
         with self._lock:
             session = self._sessions.pop(client_socket, None)
+            self._send_locks.pop(client_socket, None)
             if session is not None:
                 if self._by_name.get(session.username) is client_socket:
                     del self._by_name[session.username]
@@ -90,9 +101,15 @@ class ClientRegistry:
             return sock
 
     def send(self, client_socket, message: bytes) -> bool:
+        lock = self._get_send_lock(client_socket)
         try:
-            with self._send_lock:
-                client_socket.sendall(message)
+            with lock:
+                old_timeout = client_socket.gettimeout()
+                try:
+                    client_socket.settimeout(SEND_TIMEOUT_SECONDS)
+                    client_socket.sendall(message)
+                finally:
+                    client_socket.settimeout(old_timeout)
             return True
         except (BrokenPipeError, ConnectionResetError, OSError):
             return False

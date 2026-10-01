@@ -1,3 +1,6 @@
+import threading
+import time
+
 from tlsocket.server_side.client_registry import ClientRegistry, Session
 
 
@@ -98,11 +101,31 @@ class _FakeSocket:
     def __init__(self, fail=False):
         self.fail = fail
         self.send=[]
+        self._timeout = None
+
+    def gettimeout(self):
+        return self._timeout
+
+    def settimeout(self, value):
+        self._timeout = value
 
     def sendall(self, data):
         if self.fail:
             raise BrokenPipeError()
         self.send.append(data)
+
+class _SlowSocket:
+    def __init__(self):
+        self.release = threading.Event()
+
+    def sendall(self, data):
+        self.release.wait(timeout=5)
+
+    def gettimeout(self):
+        return None
+
+    def settimeout(self, value):
+        pass
 
 def test_send_success_returns_true_and_delievers():
     registry = ClientRegistry(max_connections_per_ip=5)
@@ -133,3 +156,25 @@ def test_broadcast_reports_failed_sockets_without_removing_them():
     failed = registry.broadcast(b"hi")
     assert failed == [bad]
     assert registry.get_session(bad) is not None
+
+def test_slow_socket_client_does_not_block_sends_to_other_clients():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    slow = _SlowSocket()
+    fast = _FakeSocket()
+    registry.add(slow, Session(username="slow", role="user"))
+    registry.add(fast, Session(username="fast", role="user"))
+
+    t = threading.Thread(target=registry.send, args=(slow, b"to_slow"))
+    t.start()
+    time.sleep(0.2)
+
+    t0 = time.perf_counter()
+    ok = registry.send(fast, b"to-fast")
+    elapsed = time.perf_counter() - t0
+
+    slow.release.set()
+    t.join()
+
+    assert ok is True
+    assert fast.send == [b"to-fast"]
+    assert elapsed < 1.0, f"send() to fast socket took too long: {elapsed:.2f}s"

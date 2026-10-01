@@ -49,6 +49,8 @@ MAX_LINE_LENGTH = 4096
 
 MAX_CONNECTIONS_PER_IP = int(os.environ.get("TLSOCKET_MAX_CONN_PER_IP", "5"))
 
+SEND_TIMEOUT_SECONDS = float(os.environ.get("TLSOCKET_SEND_TIMEOUT", "5"))
+
 # --- Runtime file locations -------------------------------------------------
 
 DATA_DIR = _dir("TLSOCKET_DATA_DIR", "data")
