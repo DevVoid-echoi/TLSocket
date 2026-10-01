@@ -5,7 +5,9 @@ import threading
 
 from tlsocket.auth.authentication import login, register, set_user_role
 from tlsocket.config import (
+    AUTH_TIMEOUT_SECONDS,
     CERT_FILE,
+    HANDSHAKE_TIMEOUT_SECONDS,
     HOST,
     KEY_FILE,
     MAX_REGISTER_ATTEMPTS,
@@ -92,6 +94,7 @@ def handle_new_connection(raw_client, address, context):
     ip_addr = real_ip_addr
         
     client = None
+    raw_client.settimeout(HANDSHAKE_TIMEOUT_SECONDS)
     try:
         client = context.wrap_socket(raw_client, server_side=True)
     except ssl.SSLError as e:
@@ -102,6 +105,8 @@ def handle_new_connection(raw_client, address, context):
         print(f"[ERROR] Socket error during TLS Handshake with {address}: {e}")
         clean_up_client(raw_client, "SOCKET_ERROR")
         return
+
+    client.settimeout(AUTH_TIMEOUT_SECONDS)
     
     if not accept_new_client(client, real_ip_addr):
         try:
@@ -227,6 +232,8 @@ def handle_new_connection(raw_client, address, context):
             return
 
         nickname = session["username"]
+
+        client.settimeout(None)
 
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")

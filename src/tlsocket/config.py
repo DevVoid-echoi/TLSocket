@@ -50,6 +50,8 @@ MAX_LINE_LENGTH = 4096
 MAX_CONNECTIONS_PER_IP = int(os.environ.get("TLSOCKET_MAX_CONN_PER_IP", "5"))
 
 SEND_TIMEOUT_SECONDS = float(os.environ.get("TLSOCKET_SEND_TIMEOUT", "5"))
+HANDSHAKE_TIMEOUT_SECONDS = float(os.environ.get("TLSOCKET_HANDSHAKE_TIMEOUT", "10"))
+AUTH_TIMEOUT_SECONDS = float(os.environ.get("TLSOCKET_AUTH_TIMEOUT", "300"))
 
 # --- Runtime file locations -------------------------------------------------
 
