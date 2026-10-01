@@ -106,13 +106,14 @@ authenticated session.
 
 **Why it doesn't apply here the way it does to a web app**: there is no
 session token, cookie, or identifier negotiated or transmitted at all. A
-"session" (`user_sessions[client]` in
-[`client_handler.py`](../src/tlsocket/server_side/handlers/client_handler.py))
+"session" (`ClientRegistry._sessions` in
+[`client_registry.py`](../src/tlsocket/server_side/client_registry.py))
 is just an in-memory dict keyed by the live TCP+TLS socket object itself —
 it comes into existence only after a successful `LOGIN` on *that specific*
-connection, and is destroyed the moment the socket closes. There is nothing
-an attacker could pre-set or hand to a victim to fix in advance. The
-username-uniqueness check (`pending_logins`/`nicknames`, rejecting a second
+connection (`ClientRegistry.add()`), and is destroyed the moment the socket
+closes (`ClientRegistry.remove()`). There is nothing an attacker could
+pre-set or hand to a victim to fix in advance. The username-uniqueness check
+(`ClientRegistry.reserve_username()`/`_pending_logins`, rejecting a second
 concurrent `LOGIN` for the same account with `ALREADY_LOGGED_IN`) closes the
 adjacent concern of two connections racing to claim the same identity.
 

@@ -199,7 +199,7 @@ def handle_new_connection(raw_client, address, context):
             # Register new users
             elif line.startswith("REGISTER "):
                 if not register_limiter.allow(ip_addr):
-                    client.sendall(error(ErrorCode.RATE_LIMIT_EXCEEDED, "ERR RATE_LIMIT_EXCEEDED Too many registration attempts. Try again later!").encode())
+                    client.sendall(error(ErrorCode.RATE_LIMIT_EXCEEDED, "Too many registration attempts. Try again later!").encode())
                     log_event("RATE_LIMIT_EXCEEDED", username="Unknown", ip=ip_addr, extra_info="reason=REGISTER_FLOOD")
                     continue
                 parts = line.split(" ", 2)
