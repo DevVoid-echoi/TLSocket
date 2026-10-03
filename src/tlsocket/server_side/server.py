@@ -237,7 +237,7 @@ def handle_new_connection(raw_client, address, context):
 
         # --- Succeed and start threads ---
         print(f"User '{nickname}' ({session['role']}) connected successfully!")
-        if not registry.send(client, f"OK Connected as {nickname}, role:{session['role']}\n".encode()):
+        if not registry.send(client, f"OK Connected as {nickname}, role: {session['role']}\n".encode()):
             raise OSError("Client disconnected during login")
         registry.add(client, Session(username=nickname, role=session["role"]))
         reserved_username = None

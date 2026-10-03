@@ -1,6 +1,6 @@
 from tlsocket import metrics
-from tlsocket.auth.authentication import set_user_role
-from tlsocket.auth.rbac import Permission, has_permission
+from tlsocket.auth.authentication import get_user_role, set_user_role
+from tlsocket.auth.rbac import Permission, can_act_on, has_permission
 from tlsocket.config import (
     MAX_CONNECTIONS_PER_IP,
     MAX_LINE_LENGTH,
@@ -63,6 +63,14 @@ def broadcast(message, sender=None):
     for failed_client in registry.broadcast(message, sender=sender):
         clean_up_client(failed_client, "disconnected") # Clean up the disconnected client
 
+def _target_role(username: str) -> str | None:
+    sock = registry.by_name(username)
+    if sock:
+        session = registry.get_session(sock)
+        if session:
+            return session.role
+    return get_user_role(username)
+
 def kick_user(name):
     """Remove the user in kick command"""
     client_to_kick = registry.by_name(name)
@@ -113,6 +121,11 @@ def handle_messages(client, client_ip=None):
 
                 name_to_kick = line[5:].strip()
                 if name_to_kick:
+                    target_role = _target_role(name_to_kick)
+                    if target_role is not None and not can_act_on(user_role, target_role):
+                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot KICK a user with an equal or higher role.").encode())
+                        log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=KICK_RANK_DENIED target={name_to_kick}")
+                        continue
                     if kick_user(name_to_kick):
                         broadcast(chat_message(f"{name_to_kick} was kicked by {current_nick}!").encode()) # Send the announcement to all users
                         print(f'{name_to_kick} was kicked!')
@@ -127,6 +140,11 @@ def handle_messages(client, client_ip=None):
 
                 name_to_ban = line[4:].strip()
                 if name_to_ban:
+                    target_role = _target_role(name_to_ban)
+                    if target_role is not None and not can_act_on(user_role, target_role):
+                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot BAN a user with an equal or higher role.").encode())
+                        log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_RANK_DENIED target={name_to_ban}")
+                        continue
                     add_ban(name_to_ban)
                     if kick_user(name_to_ban):
                         broadcast(chat_message(f"{name_to_ban} was banned by {current_nick}!").encode()) # Send the announcement to all users
@@ -141,6 +159,11 @@ def handle_messages(client, client_ip=None):
                     continue
 
                 target_user = line[6:].strip()
+                target_role = _target_role(target_user)
+                if target_role is not None and not can_act_on(user_role, target_role):
+                    client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot UNBAN a user with an equal or higher role.").encode())
+                    log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=UNBAN_RANK_DENIED target={target_user}")
+                    continue
                 remove_ban(target_user)
                 print(f'{target_user} was unbanned!')
                 log_event("UNBAN", username=target_user, extra_info=f"by={current_nick}")

@@ -138,6 +138,13 @@ def login(username: str, password: str) -> tuple[bool, dict[str, Any] | None]:
         print(f"[AUTH LOG] Login failed: Invalid password for user '{username}'.")
         return False, None
 
+def get_user_role(username: str) -> str | None:
+    username = username.strip().lower()
+    with _users_lock:
+        users = _load_users()
+    user_data = users.get(username)
+    return user_data["role"] if user_data else None
+
 def set_user_role(username: str, new_role: str) -> bool:
     """Assign new role for an acoount"""
     username = username.strip().lower()

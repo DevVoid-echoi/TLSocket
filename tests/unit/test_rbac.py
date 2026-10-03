@@ -1,6 +1,6 @@
 import pytest
 
-from tlsocket.auth.rbac import Permission, has_permission
+from tlsocket.auth.rbac import Permission, can_act_on, has_permission
 
 ALL_PERMS = [Permission.CHAT, 
             Permission.KICK,
@@ -30,4 +30,12 @@ def test_unknown_role_has_no_permission():
         assert has_permission("root", p) is False
         assert has_permission("", p) is False
 
-    
+@pytest.mark.parametrize("actor, target, expected", [
+    ("admin", "moderator", True),
+    ("admin", "admin", False),
+    ("moderator", "admin", False),
+    ("moderator", "moderator", False),
+    ("moderator", "user", True)
+])
+def test_can_act_on_higher_rank_only(actor, target, expected):
+    assert can_act_on(actor, target) is expected
