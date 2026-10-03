@@ -13,11 +13,13 @@ pytestmark = pytest.mark.skipif(
 @pytest.fixture
 def running_server(tmp_path, monkeypatch):
     from tlsocket.auth import authentication as auth
+    from tlsocket.server_side.handlers import ban_handler
 
     users_file = tmp_path / "user.json"
     ban_file = tmp_path / "ban.txt"
     monkeypatch.setattr(auth, "USERS_FILE", users_file)
     monkeypatch.setattr(auth, "BAN_FILE", ban_file)
+    monkeypatch.setattr(ban_handler, "BAN_FILE_PATH", ban_file)
 
     from tlsocket.server_side import server as srv
     from tlsocket.server_side.handlers import client_handler as ch

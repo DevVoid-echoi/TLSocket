@@ -224,3 +224,49 @@ def test_chat_message_increments_message_total(make_client):
         time.sleep(0.05)
 
     assert metrics.messages_total._value.get() == before + 1
+
+def test_ban_is_case_insensitive_and_actually_kicks(make_client):
+    from tlsocket.auth import authentication as auth
+    from tlsocket.server_side.handlers.ban_handler import get_banned_users
+
+    alice = make_client()
+    alice.send("REGISTER alice pw123")
+    alice.recv_line()
+    auth.set_user_role("alice", "moderator")
+    alice.send("LOGIN alice pw123")
+    alice.recv_line()
+
+    bob = make_client()
+    bob.send("REGISTER Bob pw123")
+    bob.recv_line()
+    bob.send("LOGIN Bob pw123")
+    bob.recv_line()
+    alice.recv_line()
+
+    alice.send("BAN Bob")
+    alice.recv_line()
+
+    assert "bob" in get_banned_users()
+    assert bob.recv_line() == "MSG You were banned!"
+
+def test_unexpected_exception_during_auth_releases_ip_slot(make_client, monkeypatch):
+    import time
+
+    from tlsocket.server_side.logs_management import record_logs as rl
+
+    original_is_blocked = rl.brute_force_detector.is_ip_blocked
+    monkeypatch.setattr(rl.brute_force_detector, "is_ip_blocked", lambda ip: (_ for _ in ()).throw(RuntimeError("boom")))
+
+    victim = make_client()
+    victim.send("LOGIN alice pw123")
+    assert victim.recv_line() is None
+
+    deadline = time.time() + 2
+    while ch.registry._ip_counts and time.time() < deadline:
+        time.sleep(0.05)
+    assert ch.registry._ip_counts == {}
+
+    monkeypatch.setattr(rl.brute_force_detector, "is_ip_blocked", original_is_blocked)
+    recovered = make_client()
+    recovered.send("REGISTER bob pw123")
+    assert recovered.recv_line() == "OK Registration successful"

@@ -255,6 +255,15 @@ def handle_new_connection(raw_client, address, context):
             pass
         return
 
+    except Exception as e:
+        print(f"[ERROR] Unexpected error handling connection {address}: {e}")
+        log_event("CONNECTION_ERROR", username="Unknown", ip=real_ip_addr, extra_info=f"error={e}")
+        try:
+            clean_up_client(client, "UNEXPECTED_ERROR")
+        except Exception: # nosec B110
+            pass
+        return
+
     finally:
         if reserved_username is not None:
             registry.release_reservation(reserved_username)
