@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 from collections import defaultdict
 from collections.abc import Callable, Iterable
 from datetime import datetime, timedelta, timezone
@@ -31,6 +32,7 @@ class BruteForceDetector:
         self.blocked_ips: dict[str,datetime] = {} # Dictionary to keep track of blocked IPs and their unblock time
         self.db_file = BRUTE_FORCE_STATE_FILE  # Path to the JSON file for saving state
         self._clock = clock
+        self._lock = threading.RLock()
         self.load_state()
 
     def save_state(self) -> None:
@@ -72,51 +74,53 @@ class BruteForceDetector:
         return self.block_duration * mul
 
     def is_ip_blocked(self, ip:str) -> bool:
-        if ip not in self.blocked_ips:
-            return False
-        
-        if self._clock() > self.blocked_ips[ip]:
-            del self.blocked_ips[ip]
-            self.save_state()  # Save the state after unblocking the IP
-            return False
+        with self._lock:
+            if ip not in self.blocked_ips:
+                return False
+            
+            if self._clock() > self.blocked_ips[ip]:
+                del self.blocked_ips[ip]
+                self.save_state()  # Save the state after unblocking the IP
+                return False
 
-        return True
+            return True
 
     def get_remaining_ban_time(self, ip:str) -> int:
-        if not self.is_ip_blocked(ip):
-            return 0
-        remaining = (self.blocked_ips[ip] - self._clock()).total_seconds()
-        return max(0, int(remaining))
+        with self._lock:
+            if not self.is_ip_blocked(ip):
+                return 0
+            remaining = (self.blocked_ips[ip] - self._clock()).total_seconds()
+            return max(0, int(remaining))
 
     def process_record(self, record: LogRecord) -> None:
         # Process a log record to detect failed login attempts
         if record.event_type != "LOGIN_FAILED" or not record.ip or record.ip == "N/A":
             return  # Ignore non-login failed events or invalid IPs
+        with self._lock:
+            current_time = record.timestamp  # Get the current timestamp
+            ip = record.ip  # Extract the IP address from the record
+            timestamps = self.failed_attempts_history[ip]  # Get the list of timestamps for this IP
 
-        current_time = record.timestamp  # Get the current timestamp
-        ip = record.ip  # Extract the IP address from the record
-        timestamps = self.failed_attempts_history[ip]  # Get the list of timestamps for this IP
+            timestamps.append(current_time)  # Add the current timestamp to the history
 
-        timestamps.append(current_time)  # Add the current timestamp to the history
+            # Define the threshold time for the window of failed attempts
+            threshold_time = current_time - timedelta(seconds=self.window_seconds)
+            # Filter out timestamps that are older than the threshold
+            self.failed_attempts_history[ip] = [
+                t for t in timestamps if t >= threshold_time
+            ]
 
-        # Define the threshold time for the window of failed attempts
-        threshold_time = current_time - timedelta(seconds=self.window_seconds)
-        # Filter out timestamps that are older than the threshold
-        self.failed_attempts_history[ip] = [
-            t for t in timestamps if t >= threshold_time
-        ]
+            valid_attempts = len(self.failed_attempts_history[ip])  # Count valid attempts
+            if valid_attempts >= self.max_attempts:  # Check if the number of attempts exceeds the limit
+                self.violation_count[ip] += 1  # Increment the violation count for this IP
+                effective_duration = self._get_ban_duration(ip)  # Get the effective ban duration based on violation count
+                unblock_time = current_time + timedelta(seconds=effective_duration)
+                self.blocked_ips[ip] = unblock_time
 
-        valid_attempts = len(self.failed_attempts_history[ip])  # Count valid attempts
-        if valid_attempts >= self.max_attempts:  # Check if the number of attempts exceeds the limit
-            self.violation_count[ip] += 1  # Increment the violation count for this IP
-            effective_duration = self._get_ban_duration(ip)  # Get the effective ban duration based on violation count
-            unblock_time = current_time + timedelta(seconds=effective_duration)
-            self.blocked_ips[ip] = unblock_time
+                log_alert(ip=ip, failed_attempts=valid_attempts, window_seconds=self.window_seconds)  # Log an alert
+                self.failed_attempts_history[ip].clear()  # Clear the history for this IP
 
-            log_alert(ip=ip, failed_attempts=valid_attempts, window_seconds=self.window_seconds)  # Log an alert
-            self.failed_attempts_history[ip].clear()  # Clear the history for this IP
-
-            self.save_state()  # Save the state after blocking the IP
+                self.save_state()  # Save the state after blocking the IP
 
 def detect_brute_force_stream(records: Iterable[LogRecord], max_attempts: int=5, window_seconds: int=60) -> None:
     # Create a BruteForceDetector instance and process a stream of log records

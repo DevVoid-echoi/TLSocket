@@ -80,6 +80,16 @@ def kick_user(name):
     registry.send(client_to_kick,chat_message("You were kicked!").encode())
     clean_up_client(client_to_kick, "kicked")
     return True
+
+def ban_user(name):
+    """Remove the user in ban command"""
+    client_to_ban = registry.by_name(name)
+    if not client_to_ban:
+        return False
+
+    registry.send(client_to_ban,chat_message("You were banned!").encode())
+    clean_up_client(client_to_ban, "banned")
+    return True
     
 def handle_messages(client, client_ip=None):
     """Handle received messages from users"""
@@ -118,7 +128,7 @@ def handle_messages(client, client_ip=None):
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=KICK_PERMISSION_DENIED")
                         continue
 
-                    name_to_kick = line[5:].strip()
+                    name_to_kick = line[5:].strip().lower()
                     if name_to_kick:
                         target_role = _target_role(name_to_kick)
                         if target_role is not None and not can_act_on(user_role, target_role):
@@ -137,7 +147,7 @@ def handle_messages(client, client_ip=None):
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=BAN_PERMISSION_DENIED")
                         continue
 
-                    name_to_ban = line[4:].strip()
+                    name_to_ban = line[4:].strip().lower()
                     if name_to_ban:
                         target_role = _target_role(name_to_ban)
                         if target_role is not None and not can_act_on(user_role, target_role):
@@ -145,7 +155,7 @@ def handle_messages(client, client_ip=None):
                             log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_RANK_DENIED target={name_to_ban}")
                             continue
                         add_ban(name_to_ban)
-                        kick_user(name_to_ban)
+                        ban_user(name_to_ban)
                         broadcast(chat_message(f"{name_to_ban} was banned by {current_nick}!").encode()) # Send the announcement to all users
                         print(f'{name_to_ban} was banned!')
                         log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
@@ -157,7 +167,7 @@ def handle_messages(client, client_ip=None):
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=UNBAN_PERMISSION_DENIED")
                         continue
 
-                    target_user = line[6:].strip()
+                    target_user = line[6:].strip().lower()
                     target_role = _target_role(target_user)
                     if target_role is not None and not can_act_on(user_role, target_role):
                         client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot UNBAN a user with an equal or higher role.").encode())
