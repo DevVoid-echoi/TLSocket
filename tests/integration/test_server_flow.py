@@ -112,6 +112,31 @@ def test_moderator_cannot_ban_offline_admin(make_client):
     assert bob.recv_line() == "MSG PERMISSION_DENIED: cannot BAN a user with an equal or higher role."
     assert "alice" not in get_banned_users()
 
+def test_banning_offline_user_is_logged(make_client):
+    import json
+
+    from tlsocket.auth import authentication as auth
+    from tlsocket.config import SECURITY_LOG
+
+
+    alice = make_client()
+    alice.send("REGISTER alice pw123")
+    alice.recv_line()
+    auth.set_user_role("alice", "admin")
+    alice.send("LOGIN alice pw123")
+    alice.recv_line()
+
+    bob = make_client()
+    bob.send("REGISTER bob pw123")
+    bob.recv_line()
+    bob.close()
+
+    alice.send("BAN bob")
+    alice.recv_line()
+
+    entries = [json.loads(line) for line in SECURITY_LOG.read_text(encoding="utf-8").splitlines()]
+    assert any(e.get("event") == "BAN" and e.get("username") == "bob" for e in entries)
+
 def test_login_while_already_online_is_rejected(make_client):
     alice1 = make_client()
     alice1.send("REGISTER alice pw123")
