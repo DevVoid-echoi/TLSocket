@@ -145,10 +145,10 @@ def handle_messages(client, client_ip=None):
                             log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_RANK_DENIED target={name_to_ban}")
                             continue
                         add_ban(name_to_ban)
-                        if kick_user(name_to_ban):
-                            broadcast(chat_message(f"{name_to_ban} was banned by {current_nick}!").encode()) # Send the announcement to all users
-                            print(f'{name_to_ban} was banned!')
-                            log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
+                        kick_user(name_to_ban)
+                        broadcast(chat_message(f"{name_to_ban} was banned by {current_nick}!").encode()) # Send the announcement to all users
+                        print(f'{name_to_ban} was banned!')
+                        log_event("BAN", username=name_to_ban, extra_info=f"by={current_nick}")
 
                     continue
                 elif line.startswith("UNBAN "):
