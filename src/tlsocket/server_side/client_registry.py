@@ -1,8 +1,8 @@
 import queue
+import ssl
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any
 
 from tlsocket.config import SEND_QUEUE_MAXSIZE
 
@@ -13,7 +13,7 @@ class Session:
     role: str
 
 class _ClientWriter:
-    def __init__(self, sock) -> None:
+    def __init__(self, sock: ssl.SSLSocket) -> None:
         self.sock = sock
         self.queue: queue.Queue[bytes | None] = queue.Queue(maxsize=SEND_QUEUE_MAXSIZE)
         self.thread = threading.Thread(target=self._run, daemon=True)
@@ -47,26 +47,23 @@ class _ClientWriter:
         except queue.Full:
             pass
 
-
-        
-
 class ClientRegistry:
     def __init__(self, max_connections_per_ip: int) -> None:
         self._lock = threading.Lock()
         self._max_connections_per_ip = max_connections_per_ip
 
-        self._sessions: dict[Any, Session] = {}
-        self._by_name: dict[str, Any] = {}
-        self._client_ips: dict[Any, str] = {}
+        self._sessions: dict[ssl.SSLSocket, Session] = {}
+        self._by_name: dict[str, ssl.SSLSocket] = {}
+        self._client_ips: dict[ssl.SSLSocket, str] = {}
         self._ip_counts: defaultdict[str, int] = defaultdict(int)
         self._pending_logins: set[str] = set()
-        self._writers: dict[Any, _ClientWriter] = {}
+        self._writers: dict[ssl.SSLSocket, _ClientWriter] = {}
 
     def __len__(self) -> int:
         with self._lock:
             return len(self._sessions)
 
-    def try_reserve_ip_slot(self, client_socket, ip: str) -> bool:
+    def try_reserve_ip_slot(self, client_socket: ssl.SSLSocket, ip: str) -> bool:
         with self._lock:
             if self._ip_counts[ip] >= self._max_connections_per_ip:
                 return False
@@ -74,7 +71,7 @@ class ClientRegistry:
             self._client_ips[client_socket] = ip
             return True
 
-    def release_ip_slot(self, client_socket) -> None:
+    def release_ip_slot(self, client_socket: ssl.SSLSocket) -> None:
         with self._lock:
             ip = self._client_ips.pop(client_socket, None)
             if ip is None:
@@ -84,14 +81,14 @@ class ClientRegistry:
                 if self._ip_counts[ip] <= 0:
                     del self._ip_counts[ip]
 
-    def add(self, client_socket, session: Session) -> None:
+    def add(self, client_socket: ssl.SSLSocket, session: Session) -> None:
         with self._lock:
             self._sessions[client_socket] = session
             self._by_name[session.username] = client_socket
             self._pending_logins.discard(session.username)
             self._writers[client_socket] = _ClientWriter(client_socket)
 
-    def remove(self, client_socket) -> Session | None:
+    def remove(self, client_socket: ssl.SSLSocket) -> Session | None:
         with self._lock:
             session = self._sessions.pop(client_socket, None)
             writer = self._writers.pop(client_socket, None)
@@ -102,15 +99,15 @@ class ClientRegistry:
             writer.stop()
         return session
 
-    def get_session(self, client_socket) -> Session | None:
+    def get_session(self, client_socket: ssl.SSLSocket) -> Session | None:
         with self._lock:
             return self._sessions.get(client_socket)
 
-    def by_name(self, username: str):
+    def by_name(self, username: str) -> ssl.SSLSocket | None:
         with self._lock:
             return self._by_name.get(username)
 
-    def snapshot(self):
+    def snapshot(self) -> list[ssl.SSLSocket]:
         with self._lock:
             return list(self._sessions.keys())
 
@@ -125,7 +122,7 @@ class ClientRegistry:
         with self._lock:
             self._pending_logins.discard(username)
 
-    def set_role(self, username: str, new_role: str):
+    def set_role(self, username: str, new_role: str) -> ssl.SSLSocket | None:
         with self._lock:
             sock = self._by_name.get(username)
             if sock is None:
@@ -133,15 +130,15 @@ class ClientRegistry:
             self._sessions[sock].role = new_role
             return sock
 
-    def send(self, client_socket, message: bytes) -> bool:
+    def send(self, client_socket: ssl.SSLSocket, message: bytes) -> bool:
         with self._lock:
             writer = self._writers.get(client_socket)
         if writer is None:
             return False
         return writer.enqueue(message)
 
-    def broadcast(self, message: bytes, sender=None) -> list:
-        failed = []
+    def broadcast(self, message: bytes, sender: ssl.SSLSocket | None = None) -> list[ssl.SSLSocket]:
+        failed: list[ssl.SSLSocket] = []
         for client_socket in self.snapshot():
             if client_socket is sender:
                 continue

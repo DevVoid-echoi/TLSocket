@@ -66,6 +66,7 @@ class ChatServer:
         return self.port
 
     def _accept_loop(self) -> None:
+        assert self.socket is not None
         while True:
             try:
                 raw_client, address = self.socket.accept()
@@ -88,7 +89,7 @@ class ChatServer:
         if self._accept_thread is not None:
             self._accept_thread.join()
 
-def handle_new_connection(raw_client, address, context):
+def handle_new_connection(raw_client: socket.socket, address: tuple[str, int], context: ssl.SSLContext) -> None:
     """Handle a new client connection, perform authentication, and start message handling."""
     real_ip_addr = address[0]
     ip_addr = real_ip_addr
@@ -174,7 +175,7 @@ def handle_new_connection(raw_client, address, context):
                     success, user_session = login(username, password)
                     if success and user_session:
                         if username in get_banned_users():
-                            registry.release_reservation(reserved_username)
+                            registry.release_reservation(username)
                             reserved_username = None
                             client.sendall(error(ErrorCode.BANNED).encode())
                             log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
@@ -182,13 +183,13 @@ def handle_new_connection(raw_client, address, context):
                         session = user_session
                         log_event("LOGIN_SUCCESS", username=username, ip=ip_addr)
                     elif success and not user_session:
-                        registry.release_reservation(reserved_username)
+                        registry.release_reservation(username)
                         reserved_username = None
                         client.sendall(error(ErrorCode.BANNED).encode())
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr, extra_info="reason=BANNED")
                         continue
                     else:
-                        registry.release_reservation(reserved_username)
+                        registry.release_reservation(username)
                         reserved_username = None
                         client.sendall(error(ErrorCode.WRONG_AUTH).encode()) # Decline due to wrong information
                         log_event("LOGIN_FAILED", username=username, ip=ip_addr)
@@ -269,7 +270,7 @@ def handle_new_connection(raw_client, address, context):
         if reserved_username is not None:
             registry.release_reservation(reserved_username)
 
-def server_console_input():
+def server_console_input() -> None:
     while True:
         try:
             cmd = input().strip()
@@ -330,7 +331,7 @@ def server_console_input():
         except (EOFError, KeyboardInterrupt):
             break
 
-def main():
+def main() -> None:
     start_metrics_server(METRICS_PORT)
     print(f"[METRICS] /metrics available on: {METRICS_PORT}")
     server = ChatServer()
