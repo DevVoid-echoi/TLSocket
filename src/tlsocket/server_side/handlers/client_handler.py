@@ -44,10 +44,11 @@ def clean_up_client(client, disconnect_msg):
     message_limiter.forget(client)
     registry.release_ip_slot(client)
 
-    try:
-        client.close()
-    except OSError:
-        pass
+    if session is None:
+        try:
+            client.close()
+        except OSError:
+            pass
 
     if session: # Print annoucement that the disconnected user left the chat
         print(f"Client {session.username} {disconnect_msg}!")

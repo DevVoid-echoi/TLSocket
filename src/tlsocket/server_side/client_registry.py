@@ -1,9 +1,10 @@
+import queue
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Any
 
-from tlsocket.config import SEND_TIMEOUT_SECONDS
+from tlsocket.config import SEND_QUEUE_MAXSIZE
 
 
 @dataclass
@@ -11,11 +12,47 @@ class Session:
     username: str
     role: str
 
+class _ClientWriter:
+    def __init__(self, sock) -> None:
+        self.sock = sock
+        self.queue: queue.Queue[bytes | None] = queue.Queue(maxsize=SEND_QUEUE_MAXSIZE)
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+
+    def _run(self) -> None:
+        while True:
+            item = self.queue.get()
+            if item is None:
+                return
+            try:
+                self.sock.sendall(item)
+            except OSError:
+                break
+
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+    def enqueue(self, message: bytes) -> bool:
+        try:
+            self.queue.put_nowait(message)
+            return True
+        except queue.Full:
+            return False
+
+    def stop(self) -> None:
+        try:
+            self.queue.put_nowait(None)
+        except queue.Full:
+            pass
+
+
+        
 
 class ClientRegistry:
     def __init__(self, max_connections_per_ip: int) -> None:
         self._lock = threading.Lock()
-        self._send_locks: dict[Any, threading.Lock] = {}
         self._max_connections_per_ip = max_connections_per_ip
 
         self._sessions: dict[Any, Session] = {}
@@ -23,18 +60,11 @@ class ClientRegistry:
         self._client_ips: dict[Any, str] = {}
         self._ip_counts: defaultdict[str, int] = defaultdict(int)
         self._pending_logins: set[str] = set()
+        self._writers: dict[Any, _ClientWriter] = {}
 
     def __len__(self) -> int:
         with self._lock:
             return len(self._sessions)
-
-    def _get_send_lock(self, client_socket) -> threading.Lock:
-        with self._lock:
-            lock= self._send_locks.get(client_socket)
-            if lock is None:
-                lock = threading.Lock()
-                self._send_locks[client_socket] = lock
-        return lock
 
     def try_reserve_ip_slot(self, client_socket, ip: str) -> bool:
         with self._lock:
@@ -59,15 +89,18 @@ class ClientRegistry:
             self._sessions[client_socket] = session
             self._by_name[session.username] = client_socket
             self._pending_logins.discard(session.username)
+            self._writers[client_socket] = _ClientWriter(client_socket)
 
     def remove(self, client_socket) -> Session | None:
         with self._lock:
             session = self._sessions.pop(client_socket, None)
-            self._send_locks.pop(client_socket, None)
+            writer = self._writers.pop(client_socket, None)
             if session is not None:
                 if self._by_name.get(session.username) is client_socket:
                     del self._by_name[session.username]
-            return session
+        if writer:
+            writer.stop()
+        return session
 
     def get_session(self, client_socket) -> Session | None:
         with self._lock:
@@ -101,18 +134,11 @@ class ClientRegistry:
             return sock
 
     def send(self, client_socket, message: bytes) -> bool:
-        lock = self._get_send_lock(client_socket)
-        try:
-            with lock:
-                old_timeout = client_socket.gettimeout()
-                try:
-                    client_socket.settimeout(SEND_TIMEOUT_SECONDS)
-                    client_socket.sendall(message)
-                finally:
-                    client_socket.settimeout(old_timeout)
-            return True
-        except (BrokenPipeError, ConnectionResetError, OSError):
+        with self._lock:
+            writer = self._writers.get(client_socket)
+        if writer is None:
             return False
+        return writer.enqueue(message)
 
     def broadcast(self, message: bytes, sender=None) -> list:
         failed = []
@@ -130,4 +156,5 @@ class ClientRegistry:
             self._client_ips.clear()
             self._ip_counts.clear()
             self._pending_logins.clear()
+            self._writers.clear()
     
