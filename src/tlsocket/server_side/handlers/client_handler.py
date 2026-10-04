@@ -1,3 +1,7 @@
+import socket
+import ssl
+from typing import cast
+
 from tlsocket import metrics
 from tlsocket.auth.authentication import get_user_role, set_user_role
 from tlsocket.auth.rbac import Permission, can_act_on, has_permission
@@ -18,7 +22,7 @@ registry = ClientRegistry(max_connections_per_ip=MAX_CONNECTIONS_PER_IP)
 metrics.connection_active.set_function(lambda: len(registry))
 message_limiter = SlidingWindowLimiter(max_events=MAX_MESSAGES_PER_WINDOW, window_seconds=MESSAGE_RATE_WINDOW)
 
-def read_line(sock, buffer):
+def read_line(sock: ssl.SSLSocket, buffer: bytes) -> tuple[str | None, bytes]:
     """Read full-line messages"""
     while b"\n" not in buffer:
         if len(buffer) > MAX_LINE_LENGTH:
@@ -35,14 +39,15 @@ def read_line(sock, buffer):
         return None, buffer
     return raw.decode("utf-8", errors="replace").strip(), buffer
 
-def accept_new_client(client_socket, client_ip):
+def accept_new_client(client_socket: ssl.SSLSocket, client_ip: str) -> bool:
     return registry.try_reserve_ip_slot(client_socket, client_ip)
 
-def clean_up_client(client, disconnect_msg):
+def clean_up_client(client: ssl.SSLSocket | socket.socket, disconnect_msg: str) -> None:
     """Clean up disconnected users"""
-    session = registry.remove(client)
-    message_limiter.forget(client)
-    registry.release_ip_slot(client)
+    ssl_client = cast(ssl.SSLSocket, client)
+    session = registry.remove(ssl_client)
+    message_limiter.forget(ssl_client)
+    registry.release_ip_slot(ssl_client)
 
     if session is None:
         try:
@@ -52,11 +57,11 @@ def clean_up_client(client, disconnect_msg):
 
     if session: # Print annoucement that the disconnected user left the chat
         print(f"Client {session.username} {disconnect_msg}!")
-        broadcast(chat_message(f"{session.username} left the chat!").encode(),sender=client)
+        broadcast(chat_message(f"{session.username} left the chat!").encode(), sender=ssl_client)
         log_event("USER_DISCONNECTED", username=session.username)
 
 
-def broadcast(message, sender=None):
+def broadcast(message: bytes | str, sender: ssl.SSLSocket | None = None) -> None:
     """Broadcast the message to all other users"""
     if isinstance(message, str):
         message = message.encode("utf-8") # Encode the message
@@ -72,7 +77,7 @@ def _target_role(username: str) -> str | None:
             return session.role
     return get_user_role(username)
 
-def kick_user(name):
+def kick_user(name: str) -> bool:
     """Remove the user in kick command"""
     client_to_kick = registry.by_name(name)
     if not client_to_kick:
@@ -82,7 +87,7 @@ def kick_user(name):
     clean_up_client(client_to_kick, "kicked")
     return True
 
-def ban_user(name):
+def ban_user(name: str) -> bool:
     """Remove the user in ban command"""
     client_to_ban = registry.by_name(name)
     if not client_to_ban:
@@ -92,7 +97,7 @@ def ban_user(name):
     clean_up_client(client_to_ban, "banned")
     return True
     
-def handle_messages(client, client_ip=None):
+def handle_messages(client: ssl.SSLSocket, client_ip: str | None = None) -> None:
     """Handle received messages from users"""
     buffer = b""
     try:

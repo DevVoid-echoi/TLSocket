@@ -34,7 +34,7 @@ WARNING_EVENTS = frozenset({
     "RATE_LIMIT_EXCEEDED", "CONNECTION_LIMIT_REACHED"
 })
 
-def _emit(logger: logging.Logger, event: str, username: str, ip: str, extra_info: str):
+def _emit(logger: logging.Logger, event: str, username: str, ip: str, extra_info: str) -> None:
     level = logging.WARNING if event in WARNING_EVENTS else logging.INFO
     fields = {"username": username}
     if ip != "N/A":
@@ -53,7 +53,7 @@ def _feed_detector(event: str, username: str, ip: str, extra_info: str) -> None:
         extra_info=extra_info
     ))
 
-def log_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = ""):
+def log_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = "") -> None:
     if event_type in SERVER_ONLY:
         _emit(server_logger, event_type, username, ip, extra_info)
     elif event_type in SERVER_AND_SECURITY:
@@ -74,6 +74,6 @@ def log_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra
     elif event_type == "USER_CONNECTED":
         metrics.connection_total.inc()
 
-def log_test_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = ""):
+def log_test_event(event_type: str, username: str = "unknown", ip: str = "N/A", extra_info: str = "") -> None:
     _emit(test_logger, event_type, username, ip, extra_info)
     _feed_detector(event_type, username, ip, extra_info)

@@ -6,7 +6,7 @@ from tlsocket.config import BAN_FILE as BAN_FILE_PATH
 _ban_lock = threading.Lock()
 
 
-def get_banned_users():
+def get_banned_users() -> list[str]:
     """Read the ban file for banned users"""
     if not BAN_FILE_PATH.exists():
         return []
@@ -21,7 +21,7 @@ def _save_banned_users(users: list[str]) -> None:
             f.write(f"{user}\n")
     os.replace(tmp_path, BAN_FILE_PATH)
 
-def add_ban(nickname):
+def add_ban(nickname: str) -> None:
     """Add ban users"""
     nickname = nickname.strip().lower()
     if not nickname:
@@ -33,7 +33,7 @@ def add_ban(nickname):
         users.append(nickname)
         _save_banned_users(users)
 
-def remove_ban(nickname):
+def remove_ban(nickname: str) -> None:
     """Remove banned users"""
     nickname = nickname.strip().lower()
     with _ban_lock:
