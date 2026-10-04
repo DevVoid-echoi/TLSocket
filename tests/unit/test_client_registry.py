@@ -4,6 +4,12 @@ import time
 from tlsocket.server_side.client_registry import ClientRegistry, Session
 
 
+def _wait_until(predicate, timeout=1.0):
+    deadline = time.time() + timeout
+    while not predicate() and time.time() < deadline:
+        time.sleep(0.01)
+    return predicate()
+
 def test_reserve_ip_slot_up_to_limit():
     registry = ClientRegistry(max_connections_per_ip=2)
     assert registry.try_reserve_ip_slot("sock1", "1.1.1.1") is True
@@ -114,6 +120,9 @@ class _FakeSocket:
             raise BrokenPipeError()
         self.send.append(data)
 
+    def close(self):
+        pass
+
 class _SlowSocket:
     def __init__(self):
         self.release = threading.Event()
@@ -127,13 +136,17 @@ class _SlowSocket:
     def settimeout(self, value):
         pass
 
+    def close(self):
+        pass
+
 def test_send_success_returns_true_and_delievers():
     registry = ClientRegistry(max_connections_per_ip=5)
     sock = _FakeSocket()
+    registry.add(sock, Session(username="x", role="user"))
     assert registry.send(sock, b"Hello") is True
-    assert sock.send == [b"Hello"]
+    assert _wait_until(lambda: sock.send == [b"Hello"])
 
-def test_send_failure_returns_false_without_raising():
+def test_send_to_unregistered_socket_returns_false():
     registry = ClientRegistry(max_connections_per_ip=5)
     sock = _FakeSocket(fail=True)
     assert registry.send(sock, b"Hello") is False
@@ -146,16 +159,24 @@ def test_broadcast_skips_sender():
     failed = registry.broadcast(b"hi", sender=alice)
     assert failed == []
     assert alice.send == []
-    assert bob.send == [b"hi"]
+    assert _wait_until(lambda: bob.send == [b"hi"])
 
-def test_broadcast_reports_failed_sockets_without_removing_them():
+def test_broadcast_reports_failed_sockets_when_queue_is_full():
+    from tlsocket.config import SEND_QUEUE_MAXSIZE
+
     registry = ClientRegistry(max_connections_per_ip=5)
-    good, bad = _FakeSocket(), _FakeSocket(fail=True)
+    good, overloaded = _FakeSocket(), _SlowSocket()
     registry.add(good, Session(username="good", role="user"))
-    registry.add(bad, Session(username="bad", role="user"))
+    registry.add(overloaded, Session(username="overloaded", role="user"))
+
+    for _ in range(SEND_QUEUE_MAXSIZE + 1):
+        registry.send(overloaded, b"filler")
+
     failed = registry.broadcast(b"hi")
-    assert failed == [bad]
-    assert registry.get_session(bad) is not None
+    assert failed == [overloaded]
+    assert registry.get_session(overloaded) is not None
+
+    overloaded.release.set()
 
 def test_slow_socket_client_does_not_block_sends_to_other_clients():
     registry = ClientRegistry(max_connections_per_ip=5)
@@ -176,5 +197,5 @@ def test_slow_socket_client_does_not_block_sends_to_other_clients():
     t.join()
 
     assert ok is True
-    assert fast.send == [b"to-fast"]
+    assert _wait_until(lambda: fast.send == [b"to-fast"])
     assert elapsed < 1.0, f"send() to fast socket took too long: {elapsed:.2f}s"
