@@ -103,7 +103,7 @@ def handle_messages(client, client_ip=None):
                 break
             
             if len(line) > 2000:
-                client.send(error(ErrorCode.MESSAGE_TOO_LONG).encode())
+                registry.send(client, error(ErrorCode.MESSAGE_TOO_LONG).encode())
                 continue
 
             session = registry.get_session(client)
@@ -118,14 +118,14 @@ def handle_messages(client, client_ip=None):
                 cmd, args, err = parse_and_validate_command(line)
 
                 if err != "OK":
-                    client.send(f"ERR {err}\n".encode())
+                    registry.send(client, f"ERR {err}\n".encode())
                     log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd={cmd} {err}")
                     continue
 
                 # Check if the user is admin and remove the target user
                 if line.startswith('KICK '):
                     if not has_permission(user_role, Permission.KICK):
-                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have KICK permission.").encode())
+                        registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have KICK permission.").encode())
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=KICK_PERMISSION_DENIED")
                         continue
 
@@ -133,7 +133,7 @@ def handle_messages(client, client_ip=None):
                     if name_to_kick:
                         target_role = _target_role(name_to_kick)
                         if target_role is not None and not can_act_on(user_role, target_role):
-                            client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot KICK a user with an equal or higher role.").encode())
+                            registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot KICK a user with an equal or higher role.").encode())
                             log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=KICK_RANK_DENIED target={name_to_kick}")
                             continue
                         if kick_user(name_to_kick):
@@ -144,7 +144,7 @@ def handle_messages(client, client_ip=None):
                 # Check if the user is admin and ban the target user
                 elif line.startswith('BAN '):
                     if not has_permission(user_role, Permission.BAN):
-                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have BAN permission.").encode())
+                        registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have BAN permission.").encode())
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=BAN_PERMISSION_DENIED")
                         continue
 
@@ -152,7 +152,7 @@ def handle_messages(client, client_ip=None):
                     if name_to_ban:
                         target_role = _target_role(name_to_ban)
                         if target_role is not None and not can_act_on(user_role, target_role):
-                            client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot BAN a user with an equal or higher role.").encode())
+                            registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot BAN a user with an equal or higher role.").encode())
                             log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=BAN_RANK_DENIED target={name_to_ban}")
                             continue
                         add_ban(name_to_ban)
@@ -164,14 +164,14 @@ def handle_messages(client, client_ip=None):
                     continue
                 elif line.startswith("UNBAN "):
                     if not has_permission(user_role, Permission.UNBAN):
-                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have UNBAN permission.").encode())
+                        registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have UNBAN permission.").encode())
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=UNBAN_PERMISSION_DENIED")
                         continue
 
                     target_user = line[6:].strip().lower()
                     target_role = _target_role(target_user)
                     if target_role is not None and not can_act_on(user_role, target_role):
-                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot UNBAN a user with an equal or higher role.").encode())
+                        registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: cannot UNBAN a user with an equal or higher role.").encode())
                         log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=UNBAN_RANK_DENIED target={target_user}")
                         continue
                     remove_ban(target_user)
@@ -180,13 +180,13 @@ def handle_messages(client, client_ip=None):
                     continue
                 elif line.startswith("SET "):
                     if not has_permission(user_role, Permission.SET):
-                        client.send(chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have SET permission.").encode())
+                        registry.send(client, chat_message(f"{ErrorCode.PERMISSION_DENIED.value}: You do not have SET permission.").encode())
                         log_event("INVALID_COMMAND", username=current_nick, extra_info="cmd=SET_PERMISSION_DENIED")
                         continue
 
                     parts = line[4:].strip().split(maxsplit=1)
                     if len(parts) != 2:
-                        client.send(error(ErrorCode.INVALID_FORMAT, "Usage: SET <username> <role>").encode())
+                        registry.send(client, error(ErrorCode.INVALID_FORMAT, "Usage: SET <username> <role>").encode())
                         continue
                     target_user = parts[0].strip().lower()
                     new_role = parts[1].strip().lower()
@@ -197,24 +197,24 @@ def handle_messages(client, client_ip=None):
                         target_client = registry.set_role(target_user, new_role)
                         if target_client:
                             if new_role in ["moderator", "admin"]:
-                                target_client.send(chat_message('-' * 50).encode())
-                                target_client.send(chat_message("[SYSTEM] New commands unlocked:").encode())
-                                target_client.send(chat_message("- Type '/kick' <user_name> to kick a user out of the chat room").encode())
-                                target_client.send(chat_message("- Type '/ban' <user_name> to ban a user from the chat room").encode())
-                                target_client.send(chat_message("- Type '/unban' <user_name> to unban a user").encode())
+                                registry.send(target_client, chat_message('-' * 50).encode())
+                                registry.send(target_client, chat_message("[SYSTEM] New commands unlocked:").encode())
+                                registry.send(target_client, chat_message("- Type '/kick' <user_name> to kick a user out of the chat room").encode())
+                                registry.send(target_client, chat_message("- Type '/ban' <user_name> to ban a user from the chat room").encode())
+                                registry.send(target_client, chat_message("- Type '/unban' <user_name> to unban a user").encode())
                                 if new_role == "admin":
-                                    target_client.send(chat_message("- Type '/set' <username> <role> to set a new role for a user").encode())
-                                target_client.send(chat_message('-' * 50).encode())
+                                    registry.send(target_client, chat_message("- Type '/set' <username> <role> to set a new role for a user").encode())
+                                registry.send(target_client, chat_message('-' * 50).encode())
                         log_event("SET_ROLE", username=target_user, extra_info=f"by={current_nick} new_role={new_role}")
 
                     else:
-                        client.send(error(ErrorCode.INVALID_ROLE, f"Role '{new_role}' is invalid.").encode())
+                        registry.send(client, error(ErrorCode.INVALID_ROLE, f"Role '{new_role}' is invalid.").encode())
                         log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=SET_INVALID_ROLE new_role={new_role}")
 
             """Broadcast the normal message"""
             if line.startswith("MSG "):
                 if not message_limiter.allow(client):
-                    client.send(error(ErrorCode.RATE_LIMIT_EXCEEDED, "Typing too fast. Try again later!").encode())
+                    registry.send(client, error(ErrorCode.RATE_LIMIT_EXCEEDED, "Typing too fast. Try again later!").encode())
                     log_event("RATE_LIMIT_EXCEEDED", username=current_nick, extra_info="reason=MESSAGE_FLOOD")
                     continue
 
@@ -222,7 +222,7 @@ def handle_messages(client, client_ip=None):
                 valid, err_msg = validate_message(content)
 
                 if not valid:
-                    client.send(f"ERR {err_msg}\n".encode())
+                    registry.send(client, f"ERR {err_msg}\n".encode())
                     log_event("INVALID_MESSAGE", username=current_nick, extra_info=f"msg={content} {err_msg}")
                     continue
 

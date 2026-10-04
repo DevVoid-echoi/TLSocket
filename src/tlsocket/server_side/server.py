@@ -289,21 +289,21 @@ def server_console_input():
                     target_sock = registry.set_role(target_user, new_role)
 
                     if target_sock:
-                        try:
-                            target_sock.sendall(chat_message('-' * 50).encode())
-                            target_sock.sendall(chat_message(f"[SYSTEM] Your role has been updated to '{new_role}' by Server Admin!").encode())
-                            if new_role in ["moderator", "admin"]:
-                                target_sock.sendall(chat_message('-' * 50).encode())
-                                target_sock.sendall(chat_message("[SYSTEM] New commands unlocked:").encode())
-                                target_sock.sendall(chat_message("- Type '/kick' <user_name> to kick a user out of the chat room").encode())
-                                target_sock.sendall(chat_message("- Type '/ban' <user_name> to ban a user from the chat room").encode())
-                                target_sock.sendall(chat_message("- Type '/unban' <user_name> to unban a user").encode())
-                                if new_role == "admin":
-                                    target_sock.send(chat_message("- Type '/set' <username> <role> to set a new role for a user").encode())
-                            target_sock.sendall(chat_message('-' * 50).encode())
+                        ok = True
+                        ok &= registry.send(target_sock, chat_message('-' * 50).encode())
+                        ok &= registry.send(target_sock, chat_message(f"[SYSTEM] Your role has been updated to '{new_role}' by Server Admin!").encode())
+                        if new_role in ["moderator", "admin"]:
+                            ok &= registry.send(target_sock, chat_message('-' * 50).encode())
+                            ok &= registry.send(target_sock, chat_message("[SYSTEM] New commands unlocked:").encode())
+                            ok &= registry.send(target_sock, chat_message("- Type '/kick' <user_name> to kick a user out of the chat room").encode())
+                            ok &= registry.send(target_sock, chat_message("- Type '/ban' <user_name> to ban a user from the chat room").encode())
+                            ok &= registry.send(target_sock, chat_message("- Type '/unban' <user_name> to unban a user").encode())
+                            if new_role == "admin":
+                                ok &= registry.send(target_sock, chat_message("- Type '/set' <username> <role> to set a new role for a user").encode())
+                        ok &= registry.send(target_sock, chat_message('-' * 50).encode())
 
-                        except OSError as e:
-                            print(f"[SERVER CONSOLE] Error sending role update to '{target_user}': {e}")
+                        if not ok:
+                            print(f"[SERVER CONSOLE] Error sending role update to '{target_user}'")
                             pass
                 else:
                     print(f"[SERVER CONSOLE] Failed: User '{target_user}' not found.")
