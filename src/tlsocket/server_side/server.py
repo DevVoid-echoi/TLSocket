@@ -66,7 +66,8 @@ class ChatServer:
         return self.port
 
     def _accept_loop(self) -> None:
-        assert self.socket is not None
+        if self.socket is None:
+            raise RuntimeError("ChatServer.start() must be called before _accept_loop()")
         while True:
             try:
                 raw_client, address = self.socket.accept()
