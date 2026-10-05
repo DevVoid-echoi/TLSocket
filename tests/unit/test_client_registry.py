@@ -126,15 +126,22 @@ class _FakeSocket:
 class _SlowSocket:
     def __init__(self):
         self.release = threading.Event()
+        self._shutdown = False
 
     def sendall(self, data):
         self.release.wait(timeout=5)
+        if self._shutdown:
+            raise OSError("Socket is not connected") 
 
     def gettimeout(self):
         return None
 
     def settimeout(self, value):
         pass
+
+    def shutdown(self, how):
+        self._shutdown = True
+        self.release.set()
 
     def close(self):
         pass
@@ -199,3 +206,21 @@ def test_slow_socket_client_does_not_block_sends_to_other_clients():
     assert ok is True
     assert _wait_until(lambda: fast.send == [b"to-fast"])
     assert elapsed < 1.0, f"send() to fast socket took too long: {elapsed:.2f}s"
+
+def test_stop_wakes_up_a_writer_stuck_in_sendall():
+    from tlsocket.config import SEND_QUEUE_MAXSIZE
+
+    registry = ClientRegistry(max_connections_per_ip=5)
+    slow = _SlowSocket()
+    registry.add(slow, Session(username="victim", role="user"))
+
+    registry.send(slow, b"first")
+    writer = registry._writers[slow]
+    assert _wait_until(lambda: writer.queue.qsize() == 0) 
+
+    for _ in range(SEND_QUEUE_MAXSIZE):
+        registry.send(slow, b"filler")  
+
+    registry.remove(slow)
+
+    assert _wait_until(lambda: not writer.thread.is_alive(), timeout=1.0)

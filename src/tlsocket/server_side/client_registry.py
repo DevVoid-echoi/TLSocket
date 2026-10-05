@@ -1,4 +1,5 @@
 import queue
+import socket
 import ssl
 import threading
 from collections import defaultdict
@@ -45,7 +46,10 @@ class _ClientWriter:
         try:
             self.queue.put_nowait(None)
         except queue.Full:
-            pass
+            try:
+                self.sock.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
 
 class ClientRegistry:
     def __init__(self, max_connections_per_ip: int) -> None:
