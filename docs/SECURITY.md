@@ -42,6 +42,31 @@ messages, or sends an unbounded line to exhaust memory.
 - `read_line()`'s buffer is capped at `MAX_LINE_LENGTH` — a peer that never
   sends `\n` gets disconnected once its unterminated line exceeds the cap,
   instead of growing the server's memory without bound.
+- Every client has a bounded outbound queue (`SEND_QUEUE_MAXSIZE`, default
+  100) drained by one dedicated writer thread per connection
+  (`_ClientWriter` in [`client_registry.py`](../src/tlsocket/server_side/client_registry.py))
+  — that writer thread is the only code that ever calls `sendall()`/`close()`
+  on a client's socket; `registry.send()` just enqueues and returns
+  immediately. A client that stops reading fills its own queue and gets
+  disconnected once it's full, without blocking sends to anyone else. This
+  replaced an earlier design with one lock per socket plus a `settimeout()`
+  on every send: that meant a single non-reading client could still freeze
+  `sendall()` to *every* client for up to 5 seconds at a time, and toggling
+  the socket's timeout for each send raced with that same client's own
+  `recv()` call, occasionally disconnecting an otherwise-idle user. All
+  direct `client.send()`/`sendall()` call sites in `client_handler.py` and
+  `server.py`'s `/set` console command now go through `registry.send()` too,
+  so nothing outside the writer thread touches a post-login client socket.
+  A follow-up bug in the writer itself was found and fixed: if the queue was
+  already full when a client got disconnected, the stop signal
+  (`queue.put_nowait(None)`) silently failed too, leaving the writer thread
+  blocked in `sendall()` forever — the socket, its reader thread, and the
+  writer thread all leaked indefinitely even though `ClientRegistry` had
+  already freed the IP slot, letting repeated connect/flag/leak cycles from
+  one IP exceed `MAX_CONNECTIONS_PER_IP` in practice. Fixed by falling back
+  to `shutdown(SHUT_RDWR)` on the socket when the stop signal can't be
+  queued, which wakes both the stuck writer and the client's own reader
+  thread.
 
 **Limits**:
 - Nothing here stops a raw TCP SYN flood or rapid connect/disconnect
@@ -166,20 +191,6 @@ deterministically in CI even if it wasn't hit locally.
 Being upfront about what's still open, rather than presenting the above as
 a finished state:
 
-- **Partial write-lock coverage**: `ClientRegistry` now gives each client
-  socket its own lock (`_get_send_lock()` in
-  [`client_registry.py`](../src/tlsocket/server_side/client_registry.py))
-  instead of one lock shared by every connection, and `send()` runs
-  `sendall()` under a `SEND_TIMEOUT_SECONDS` timeout (default 5s). Before
-  this, a single global lock plus no timeout meant one client that stopped
-  reading (full TCP receive buffer) could block `sendall()` forever while
-  holding that lock — freezing sends to every other client on the server,
-  including the post-login `OK` reply. Several other direct
-  `client.send()`/`sendall()` call sites (auth `ERR` responses,
-  permission-denied replies, the "commands unlocked" notice in
-  `client_handler.py`, and the server-console `/set` broadcast in
-  `server.py`) still bypass `registry.send()` entirely, so they get neither
-  the per-socket lock nor the timeout.
 - **No session revocation / forced logout** beyond `/ban` (which kicks and
   blocks future logins) — there's no way to invalidate one specific live
   session (e.g. a stolen/compromised client) without banning the account
