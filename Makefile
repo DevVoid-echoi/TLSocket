@@ -6,8 +6,8 @@ test: ## Chạy toàn bộ test (unit + integration)
 lint: ## Kiểm tra style/lint
 	ruff check .
 
-type: ## Kiểm tra type - chỉ scope vào các module đã typing đầy đủ
-	mypy src/tlsocket/auth src/tlsocket/security src/tlsocket/log_parser src/tlsocket/protocol.py src/tlsocket/logging_config.py src/tlsocket/client_side
+type: ## Kiểm tra type - strict trên toàn bộ package
+	mypy src/
 
 cov: ## Coverage toàn bộ package - báo cáo, không gate
 	pytest --cov --cov-report=term-missing --cov-report=xml
