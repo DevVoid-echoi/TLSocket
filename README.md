@@ -44,7 +44,7 @@ src/tlsocket/
 ├── logging_config.py             # dictConfig for JSON-lines logging
 ├── auth/
 │   ├── authentication.py         # register / login / set_user_role, password hashing
-│   └── rbac.py                   # Permission + ROLES_PERMISSIONS, has_permission()
+│   └── rbac.py                   # Permission + ROLES_PERMISSIONS, has_permission(), role hierarchy via ROLE_RANK/can_act_on()
 ├── security/
 │   ├── validation.py             # nickname / message / command validation
 │   ├── brute_force_detection.py  # BruteForceDetector (stateful, persisted to data/)
@@ -57,7 +57,7 @@ src/tlsocket/
 │       └── instructions.py       # role-aware help text
 ├── server_side/
 │   ├── server.py                 # server entry point (tlsocket-server) + console thread
-│   ├── client_registry.py        # ClientRegistry: sessions, per-IP caps, send lock
+│   ├── client_registry.py        # ClientRegistry: sessions, per-IP caps, per-client send queue + writer thread
 │   ├── handlers/
 │   │   ├── client_handler.py     # broadcast, message loop, cleanup
 │   │   └── ban_handler.py        # ban-list file I/O
@@ -126,8 +126,8 @@ tlsocket-client
 ### Analyze the logs
 
 ```bash
-tlsocket-analyze -f security         # or: -f server
-tlsocket-analyze -f security -o report.json
+tlsocket-analyze security            # or: server, alerts
+tlsocket-analyze security -o report.json
 ```
 
 ---
