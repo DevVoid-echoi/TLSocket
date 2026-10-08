@@ -4,105 +4,6 @@ import time
 from tlsocket.server_side.client_registry import ClientRegistry, Session
 
 
-def _wait_until(predicate, timeout=1.0):
-    deadline = time.time() + timeout
-    while not predicate() and time.time() < deadline:
-        time.sleep(0.01)
-    return predicate()
-
-def test_reserve_ip_slot_up_to_limit():
-    registry = ClientRegistry(max_connections_per_ip=2)
-    assert registry.try_reserve_ip_slot("sock1", "1.1.1.1") is True
-    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is True
-    assert registry.try_reserve_ip_slot("sock3", "1.1.1.1") is False
-
-def test_reserve_ip_slot_independent_per_ip():
-    registry = ClientRegistry(max_connections_per_ip=1)
-    assert registry.try_reserve_ip_slot("sock1", "1.1.1.1") is True
-    assert registry.try_reserve_ip_slot("sock2", "2.2.2.2") is True
-
-def test_release_ip_slot_frees_up_room():
-    registry = ClientRegistry(max_connections_per_ip=1)
-    registry.try_reserve_ip_slot("sock1", "1.1.1.1")
-    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False
-    registry.release_ip_slot("sock1")
-    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is True 
-
-def test_release_ip_slot_ignores_unknown_socket():
-    registry = ClientRegistry(max_connections_per_ip=1)
-    registry.try_reserve_ip_slot("sock1", "1.1.1.1")
-    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False
-    registry.release_ip_slot("unknow_sock")
-    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False 
-
-def test_add_and_session():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    session = Session(username="alice", role="user")
-    registry.add("sock1", session)
-    assert registry.get_session("sock1") is session
-    assert registry.by_name("alice") == "sock1"
-
-def test_remove_returns_session_and_clears_by_name():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    session = Session(username="alice", role="user")
-    registry.add("sock1", session)
-    removed = registry.remove("sock1")
-    assert removed is session
-    assert registry.get_session("sock1") is None
-    assert registry.by_name("alice") is None
-
-def test_remove_socket_returns_none():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    assert registry.remove("unknown") is None
-
-def test_remove_does_not_clobber_reused_username():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    registry.add("sock_old", Session(username="alice", role="user"))
-    registry.add("sock_new", Session(username="alice", role="user"))
-    registry.remove("sock_old")
-    assert registry.by_name("alice") == "sock_new"
-
-def test_snapshot_returns_current_socket():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    registry.add("sock1", Session(username="alice", role="user"))
-    registry.add("sock2", Session(username="bob", role="user"))
-    assert set(registry.snapshot()) == {"sock1", "sock2"}
-
-def test_reserve_username_blocks_duplication():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    assert registry.reserve_username("alice") is True
-    assert registry.reserve_username("alice") is False
-
-def test_release_reservation_frees_it_up():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    registry.reserve_username("alice")
-    assert registry.reserve_username("alice") is False
-    registry.release_reservation("alice")
-    assert registry.reserve_username("alice") is True
-
-def test_reserve_username_blocked_while_already_online():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    registry.add("sock1", Session(username="alice", role="user"))
-    assert registry.reserve_username("alice") is False
-
-def test_add_clears_pending_reservation():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    registry.reserve_username("alice")
-    registry.add("sock1", Session(username="alice", role="user"))
-    registry.remove("sock1")
-    assert registry.reserve_username("alice") is True
-
-def test_set_role_updates_session_and_returns_socket():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    registry.add("sock1", Session(username="alice", role="user"))
-    result = registry.set_role("alice", "moderator")
-    assert result == "sock1"
-    assert registry.get_session("sock1").role == "moderator"
-
-def test_set_role_returns_none_for_offline_user():
-    registry = ClientRegistry(max_connections_per_ip=5)
-    assert registry.set_role("unknown", "moderator") is None
-
 class _FakeSocket:
     def __init__(self, fail=False):
         self.fail = fail
@@ -145,6 +46,112 @@ class _SlowSocket:
 
     def close(self):
         pass
+
+def _wait_until(predicate, timeout=1.0):
+    deadline = time.time() + timeout
+    while not predicate() and time.time() < deadline:
+        time.sleep(0.01)
+    return predicate()
+
+def test_reserve_ip_slot_up_to_limit():
+    registry = ClientRegistry(max_connections_per_ip=2)
+    assert registry.try_reserve_ip_slot("sock1", "1.1.1.1") is True
+    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is True
+    assert registry.try_reserve_ip_slot("sock3", "1.1.1.1") is False
+
+def test_reserve_ip_slot_independent_per_ip():
+    registry = ClientRegistry(max_connections_per_ip=1)
+    assert registry.try_reserve_ip_slot("sock1", "1.1.1.1") is True
+    assert registry.try_reserve_ip_slot("sock2", "2.2.2.2") is True
+
+def test_release_ip_slot_frees_up_room():
+    registry = ClientRegistry(max_connections_per_ip=1)
+    registry.try_reserve_ip_slot("sock1", "1.1.1.1")
+    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False
+    registry.release_ip_slot("sock1")
+    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is True 
+
+def test_release_ip_slot_ignores_unknown_socket():
+    registry = ClientRegistry(max_connections_per_ip=1)
+    registry.try_reserve_ip_slot("sock1", "1.1.1.1")
+    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False
+    registry.release_ip_slot("unknow_sock")
+    assert registry.try_reserve_ip_slot("sock2", "1.1.1.1") is False 
+
+def test_add_and_session():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    session = Session(username="alice", role="user")
+    sock = _FakeSocket()
+    registry.add(sock, session)
+    assert registry.get_session(sock) is session
+    assert registry.by_name("alice") == sock
+
+def test_remove_returns_session_and_clears_by_name():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    session = Session(username="alice", role="user")
+    sock = _FakeSocket()
+    registry.add(sock, session)
+    removed = registry.remove(sock)
+    assert removed is session
+    assert registry.get_session(sock) is None
+    assert registry.by_name("alice") is None
+
+def test_remove_socket_returns_none():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    assert registry.remove("unknown") is None
+
+def test_remove_does_not_clobber_reused_username():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    sock_old, sock_new = _FakeSocket(), _FakeSocket()
+    registry.add(sock_old, Session(username="alice", role="user"))
+    registry.add(sock_new, Session(username="alice", role="user"))
+    registry.remove(sock_old)
+    assert registry.by_name("alice") == sock_new
+
+def test_snapshot_returns_current_socket():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    sock1, sock2 = _FakeSocket(), _FakeSocket()
+    registry.add(sock1, Session(username="alice", role="user"))
+    registry.add(sock2, Session(username="bob", role="user"))
+    assert set(registry.snapshot()) == {sock1, sock2}
+
+def test_reserve_username_blocks_duplication():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    assert registry.reserve_username("alice") is True
+    assert registry.reserve_username("alice") is False
+
+def test_release_reservation_frees_it_up():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    registry.reserve_username("alice")
+    assert registry.reserve_username("alice") is False
+    registry.release_reservation("alice")
+    assert registry.reserve_username("alice") is True
+
+def test_reserve_username_blocked_while_already_online():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    sock = _FakeSocket()
+    registry.add(sock, Session(username="alice", role="user"))
+    assert registry.reserve_username("alice") is False
+
+def test_add_clears_pending_reservation():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    registry.reserve_username("alice")
+    sock = _FakeSocket()
+    registry.add(sock, Session(username="alice", role="user"))
+    registry.remove(sock)
+    assert registry.reserve_username("alice") is True
+
+def test_set_role_updates_session_and_returns_socket():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    sock = _FakeSocket()
+    registry.add(sock, Session(username="alice", role="user"))
+    result = registry.set_role("alice", "moderator")
+    assert result == sock
+    assert registry.get_session(sock).role == "moderator"
+
+def test_set_role_returns_none_for_offline_user():
+    registry = ClientRegistry(max_connections_per_ip=5)
+    assert registry.set_role("unknown", "moderator") is None
 
 def test_send_success_returns_true_and_delievers():
     registry = ClientRegistry(max_connections_per_ip=5)

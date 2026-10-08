@@ -270,3 +270,24 @@ def test_unexpected_exception_during_auth_releases_ip_slot(make_client, monkeypa
     recovered = make_client()
     recovered.send("REGISTER bob pw123")
     assert recovered.recv_line() == "OK Registration successful"
+
+def test_kicked_user_socket_closes_immediately(make_client):
+    from tlsocket.auth import authentication as auth
+
+    alice = make_client()
+    alice.send("REGISTER alice pw123")
+    alice.recv_line()
+    auth.set_user_role("alice", "moderator")
+    alice.send("LOGIN alice pw123")
+    alice.recv_line()
+
+    bob = make_client()
+    bob.send("REGISTER bob pw123")
+    bob.recv_line()
+    bob.send("LOGIN bob pw123")
+    bob.recv_line()
+    alice.recv_line()
+
+    alice.send("KICK bob")
+    assert bob.recv_line() == "MSG You were kicked!"
+    assert bob.recv_line() is None

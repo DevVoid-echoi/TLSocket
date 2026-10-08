@@ -21,19 +21,20 @@ class _ClientWriter:
         self.thread.start()
 
     def _run(self) -> None:
-        while True:
-            item = self.queue.get()
-            if item is None:
-                return
-            try:
-                self.sock.sendall(item)
-            except OSError:
-                break
-
         try:
-            self.sock.close()
-        except OSError:
-            pass
+            while True:
+                item = self.queue.get()
+                if item is None:
+                    return
+                try:
+                    self.sock.sendall(item)
+                except OSError:
+                    break
+        finally:
+            try:
+                self.sock.close()
+            except OSError:
+                pass
 
     def enqueue(self, message: bytes) -> bool:
         try:
