@@ -21,6 +21,9 @@ class _FakeSocket:
             raise BrokenPipeError()
         self.send.append(data)
 
+    def shutdown(self, how):
+        pass
+
     def close(self):
         pass
 

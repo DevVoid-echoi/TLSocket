@@ -12,7 +12,7 @@ def test_handle_messages_cleans_up_session_on_unexpected_exception(monkeypatch):
         def recv(self, n):
             return self._lines.pop(0) if self._lines else b""
 
-        def close(self):
+        def shutdown(self, how):
             pass
 
     def _boom(name):
