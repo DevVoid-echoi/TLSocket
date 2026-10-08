@@ -32,7 +32,7 @@ class _ClientWriter:
                     break
         finally:
             try:
-                self.sock.close()
+                self.sock.shutdown(socket.SHUT_RDWR)
             except OSError:
                 pass
 
