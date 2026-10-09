@@ -109,12 +109,16 @@ flowchart LR
   ```bash
   ./scripts/gen_certs.sh
   ```
+  Connecting from another machine on the same LAN? Add the server's LAN IP to the cert's SAN:
+  ```bash
+  TLSOCKET_LAN_IP=192.168.1.10 ./scripts/gen_certs.sh
+  ```
 
-  > **Dev only.** This is a self-signed certificate with SAN entries for
-  > `localhost` / `127.0.0.1` — fine for local development, but browsers/
-  > clients elsewhere will not trust it. In production, use a certificate
-  > from a real CA (e.g. [Let's Encrypt](https://letsencrypt.org/)) instead
-  > of `scripts/gen_certs.sh`.
+  > **Dev only.** This is a self-signed certificate — fine for local
+  > development, but browsers/clients elsewhere will not trust it. In
+  > production, use a certificate from a real CA (e.g.
+  > [Let's Encrypt](https://letsencrypt.org/)) instead of
+  > `scripts/gen_certs.sh`.
 
 ## Quickstart
 ```bash
