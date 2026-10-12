@@ -180,6 +180,7 @@ def handle_messages(client: ssl.SSLSocket, client_ip: str | None = None) -> None
                         log_event("INVALID_COMMAND", username=current_nick, extra_info=f"cmd=UNBAN_RANK_DENIED target={target_user}")
                         continue
                     remove_ban(target_user)
+                    broadcast(chat_message(f"{target_user} was unbanned by {current_nick}!").encode()) # Send the announcement to all users
                     print(f'{target_user} was unbanned!')
                     log_event("UNBAN", username=target_user, extra_info=f"by={current_nick}")
                     continue
