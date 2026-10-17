@@ -83,23 +83,45 @@ credentials and chat content in transit.
 
 **Mitigation**: every connection is wrapped in TLS
 (`ssl.PROTOCOL_TLS_SERVER` / `PROTOCOL_TLS_CLIENT`), `verify_mode =
-CERT_REQUIRED`, and — as of this hardening pass — `check_hostname = True`
-with a certificate carrying the correct `subjectAltName` (`localhost`,
-`127.0.0.1`; see [`scripts/gen_certs.sh`](../scripts/gen_certs.sh)). Before
-this, `check_hostname` was `False` and the shipped cert had no SAN at all,
-so hostname verification could never meaningfully have passed — TLS was
-encrypting the channel but not actually authenticating which server was on
-the other end.
+CERT_REQUIRED`, and `check_hostname = True` with a certificate carrying the
+correct `subjectAltName` (`localhost`, `127.0.0.1`, optionally a LAN IP via
+`TLSOCKET_LAN_IP`; see [`scripts/gen_certs.sh`](../scripts/gen_certs.sh)).
+Before this, `check_hostname` was `False` and the shipped cert had no SAN
+at all, so hostname verification could never meaningfully have passed — TLS
+was encrypting the channel but not actually authenticating which server
+was on the other end.
+
+[`gen_certs.sh`](../scripts/gen_certs.sh) generates a small local CA
+(`certs/ca.key`/`ca.crt`) once, then uses it to sign the server's leaf
+certificate (`certs/server.crt`) with `basicConstraints=CA:FALSE` and
+`extendedKeyUsage=serverAuth`. The client trusts `ca.crt`
+(`TLSOCKET_CA_CERT_FILE`), not the leaf directly, so the leaf can be
+reissued at will — e.g. every time the server's LAN IP changes — without
+redistributing anything to already-deployed clients as long as the CA
+itself is unchanged. This replaced an earlier version where
+`openssl req -x509` produced a single cert that was its own root, carrying
+OpenSSL's default `basicConstraints: CA:TRUE`: the server's private key
+doubled as a certificate-*signing* key it had no business holding, and
+every client had to re-trust a brand new root each time the cert was
+regenerated. The Docker image also no longer generates (or bakes into its
+layers) any certificate or private key at build time — `certs/` must be
+mounted from the host (see `docker-compose.yml`), generated beforehand by
+the same script.
 
 **Limits**:
-- The shipped certificate is **self-signed, for local development only**.
-  It is not in any trusted root store, so anything other than a client
-  configured with this exact CA (as this project's client is) will reject
-  it. **Production deployments must use a certificate from a real CA**
-  (e.g. [Let's Encrypt](https://letsencrypt.org/)) — see the README.
-- No certificate pinning beyond `load_verify_locations` trusting the one
-  configured cert; no cipher-suite/TLS-version pinning beyond the `ssl`
+- The CA is **self-signed and local-only** — it is not in any trusted root
+  store, so anything other than a client explicitly configured with this
+  project's `ca.crt` will reject the connection. **Production deployments
+  must use a certificate from a real CA** (e.g.
+  [Let's Encrypt](https://letsencrypt.org/)) — see the README.
+- No certificate pinning beyond `load_verify_locations` trusting the
+  configured CA; no cipher-suite/TLS-version pinning beyond the `ssl`
   module's own defaults.
+- The CA private key (`certs/ca.key`) lives unencrypted on the same
+  filesystem as the server — fine for a local dev CA, but it means anyone
+  with filesystem access to `certs/` can mint certificates this project's
+  clients will trust. A real deployment would keep the CA key offline,
+  separate from the host serving traffic.
 
 ### 4. Injection via nickname / chat / commands
 

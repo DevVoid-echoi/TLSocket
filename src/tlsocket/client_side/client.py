@@ -10,14 +10,14 @@ from tlsocket.client_side.client_management.connection import (
     write,
 )
 from tlsocket.client_side.client_management.instructions import print_instructions
-from tlsocket.config import CERT_FILE, CLIENT_HOST, PORT
+from tlsocket.config import CA_CERT_FILE, CLIENT_HOST, PORT
 from tlsocket.protocol import Command, format_command
 
 
 def main() -> None:
     """Connect using IPv4 and TCP then wrap the socket with SSL context"""
     try:
-        client = connect_with_backoff(CLIENT_HOST, PORT, CERT_FILE)
+        client = connect_with_backoff(CLIENT_HOST, PORT, CA_CERT_FILE)
     except ServerRejectedError as e:
         print(f"Connection refused: {e.detail}")
         sys.exit(1)
@@ -51,7 +51,7 @@ def main() -> None:
         if line is None: # Close connection if not receive any message
             print(">> Server closed connection - Retrying...")
             try:
-                client = connect_with_backoff(CLIENT_HOST, PORT, CERT_FILE)
+                client = connect_with_backoff(CLIENT_HOST, PORT, CA_CERT_FILE)
                 buffer = b""
             except ServerRejectedError as e:
                 print(f"Connection refused: {e.detail}")

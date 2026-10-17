@@ -19,6 +19,7 @@ from tlsocket.metrics import start_metrics_server
 from tlsocket.protocol import ErrorCode, chat_message, error, ok
 from tlsocket.security.rate_limiter import SlidingWindowLimiter
 from tlsocket.server_side.client_registry import Session
+from tlsocket.server_side.ensure_cert import ensure_lan_cert
 from tlsocket.server_side.handlers.ban_handler import (
     add_ban,
     get_banned_users,
@@ -333,6 +334,7 @@ def server_console_input() -> None:
             break
 
 def main() -> None:
+    ensure_lan_cert()
     start_metrics_server(METRICS_PORT)
     print(f"[METRICS] /metrics available on: {METRICS_PORT}")
     server = ChatServer()
