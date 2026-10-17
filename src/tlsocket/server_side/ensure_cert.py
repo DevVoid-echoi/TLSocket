@@ -1,6 +1,6 @@
 import os
 import socket
-import subprocess
+import subprocess  # nosec B404 - shells out to openssl/gen_certs.sh with fixed args, no user input
 from pathlib import Path
 
 from tlsocket.config import CERT_FILE
@@ -18,7 +18,7 @@ def _cert_covers_ip(ip: str) -> bool:
     if not CERT_FILE.exists():
         return False
     try:
-        out = subprocess.run(
+        out = subprocess.run(  # nosec B603 B607 - fixed arg list, no shell, openssl resolved via PATH intentionally
             ["openssl", "x509", "-in", str(CERT_FILE), "-noout", "-ext", "subjectAltName"],
             check=True, capture_output=True, text=True,
         ).stdout
@@ -33,4 +33,4 @@ def ensure_lan_cert() -> None:
             return
         print(f"[CERT] LAN IP {ip} not yet in the cert, re-signing server.crt...")
         script = Path(__file__).resolve().parents[3] / "scripts" / "gen_certs.sh"
-        subprocess.run([str(script)], check=True, env={**os.environ, "TLSOCKET_LAN_IP": ip})
+        subprocess.run([str(script)], check=True, env={**os.environ, "TLSOCKET_LAN_IP": ip})  # nosec B603 - fixed path to our own script, no shell
