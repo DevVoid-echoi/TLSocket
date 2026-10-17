@@ -15,3 +15,9 @@
 **Context:** Need a message protocol between client and server.
 **Decision:** A custom line-based text protocol (`protocol.py`, commands like `LOGIN`/`MSG`/`ERR ...`).
 **Trade-off:** No external library needed, easy to debug with `nc`/telnet (though TLS here means going through `openssl s_client` instead), and it's a good exercise in designing your own framing (`read_line`, `MAX_LINE_LENGTH`). Trade-off: loses compatibility with existing HTTP tooling (browsers, proxies, L7 load balancers), and all the validation/framing that HTTP/WebSocket already standardizes has to be handled manually.
+
+# ADR-004: Local CA signing a leaf cert instead of one self-signed cert
+
+**Context:** `scripts/gen_certs.sh` originally ran `openssl req -x509` once, producing a single certificate that was its own root. Testing over LAN meant regenerating this cert every time the server's IP changed — and since `openssl req -x509` defaults to `basicConstraints: CA:TRUE`, the server's own private key doubled as a certificate-*signing* key, something it had no legitimate reason to hold.
+**Decision:** Split cert generation into two steps: a local CA (`certs/ca.key`/`ca.crt`), generated once and left untouched afterward, signs a leaf server certificate (`certs/server.key`/`server.crt`) with `basicConstraints=CA:FALSE` and `extendedKeyUsage=serverAuth`. Clients trust `ca.crt` (`TLSOCKET_CA_CERT_FILE`), not the leaf directly.
+**Trade-off:** The leaf can now be reissued at will — e.g. every time the LAN IP changes — without redistributing anything to clients that already trust the CA, and the leaf's key can no longer mint other trusted certificates if it's ever compromised. Trade-off: two keypairs instead of one and an extra signing step in `gen_certs.sh`; the CA private key still sits unencrypted on the same host as the server, which is fine for a local dev CA but is explicitly called out as a known gap in `docs/SECURITY.md` (a real deployment would keep the CA key offline).

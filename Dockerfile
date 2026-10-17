@@ -16,16 +16,9 @@ ENV TLSOCKET_HOST=0.0.0.0 \
     TLSOCKET_PORT=9999 \
     TLSOCKET_METRICS_PORT=9100
 
-# Self-signed dev cert, generated at build time so the image runs standalone.
 # See scripts/gen_certs.sh - production must mount/replace certs/ with a
 # certificate from a real CA instead.
-RUN apt-get update && apt-get install --no-install-recommends -y openssl \
-    && rm -rf /var/lib/apt/lists/* \
-    && mkdir -p certs data logs \
-    && openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
-         -keyout certs/server.key -out certs/server.crt \
-         -subj "/CN=localhost" \
-         -addext "subjectAltName=DNS:localhost,IP:127.0.0.1"
+RUN mkdir -p data logs
 
 EXPOSE 9999 9100
 

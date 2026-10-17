@@ -77,14 +77,14 @@ docs/                             # ARCHITECTURE.md, DECISIONS.md, SECURITY.md, 
 deploy/                           # Prometheus + Grafana provisioning
 scripts/                          # gen_certs.sh, healthcheck.py
 data/                             # user.json, ban.txt, brute_force_state.json (gitignored)
-certs/                            # server.crt / server.key (gitignored)
+certs/                            # ca.key/ca.crt + server.key/server.crt (gitignored)
 logs/                             # *.log (gitignored)
 ```
 
 Runtime files (`data/`, `logs/`, `certs/`) live under the project root by
 default, regardless of the directory you launch from. Override with `TLSOCKET_DATA_DIR`, `TLSOCKET_LOG_DIR`, `TLSOCKET_CERT_DIR` (or
-`TLSOCKET_CERT_FILE` / `TLSOCKET_KEY_FILE`), plus `TLSOCKET_HOST` /
-`TLSOCKET_PORT`. See `.env.example`.
+`TLSOCKET_CERT_FILE` / `TLSOCKET_KEY_FILE` / `TLSOCKET_CA_CERT_FILE`), plus
+`TLSOCKET_HOST` / `TLSOCKET_PORT`. See `.env.example`.
 
 ```mermaid
 flowchart LR
@@ -104,21 +104,24 @@ flowchart LR
 
 * Python 3.10+ (developed on 3.12). Runtime dependencies: `argon2-cffi`
   (password hashing), `python-json-logger`, `prometheus-client`.
-* A TLS key pair. Generate a self-signed pair for local dev:
+* A TLS key pair, signed by a small local CA generated for dev:
 
   ```bash
   ./scripts/gen_certs.sh
   ```
-  Connecting from another machine on the same LAN? Add the server's LAN IP to the cert's SAN:
+  This creates `certs/ca.key`/`ca.crt` once (the client's trust anchor) and
+  uses it to sign `certs/server.key`/`server.crt`. Re-running the script
+  reissues the server cert without touching the CA, so clients that already
+  trust `ca.crt` don't need anything redistributed. Connecting from another
+  machine on the same LAN? Add the server's LAN IP to the server cert's SAN:
   ```bash
   TLSOCKET_LAN_IP=192.168.1.10 ./scripts/gen_certs.sh
   ```
 
-  > **Dev only.** This is a self-signed certificate — fine for local
-  > development, but browsers/clients elsewhere will not trust it. In
-  > production, use a certificate from a real CA (e.g.
-  > [Let's Encrypt](https://letsencrypt.org/)) instead of
-  > `scripts/gen_certs.sh`.
+  > **Dev only.** This CA is self-signed and local — fine for development,
+  > but browsers/clients elsewhere will not trust it. In production, use a
+  > certificate from a real CA (e.g. [Let's Encrypt](https://letsencrypt.org/))
+  > instead of `scripts/gen_certs.sh`.
 
 ## Quickstart
 ```bash
